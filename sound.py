@@ -144,12 +144,14 @@ class TonePip(Sound):
     def __init__(self, **kwds):
         reqdWords = ['rate', 'duration', 'f0', 'dbspl', 'pip_duration', 'pip_start', 'ramp_duration']
         for k in reqdWords:
-            if k not in kwds.keys():
+            if k not in list(kwds.keys()):
                 raise TypeError("Missing required argument '%s'" % k)
         if kwds['pip_duration'] < kwds['ramp_duration'] * 2:
             raise ValueError("pip_duration must be greater than (2 * ramp_duration).")
         if kwds['f0'] > kwds['rate'] * 0.5:
             raise ValueError("f0 must be less than (0.5 * rate).")
+        if 'alternate' not in list(kwds.keys()):  # optional, default false
+            kwds['alternate'] = False
         Sound.__init__(self, **kwds)
         
     def generate(self):
@@ -261,6 +263,8 @@ class ClickTrain(Sound):
     ----------
     rate : float
         Sample rate in Hz
+    duration: float
+        Duration of waveform, in seconds
     dbspl : float
         Maximum amplitude of click in dB SPL. 
     click_duration : float
@@ -277,6 +281,8 @@ class ClickTrain(Sound):
             raise ValueError("click_duration must be greater than sample rate.")
         if len(kwds['click_starts']) < 1:
             raise ValueError("Click Train needs at least one click.")
+        if 'alternate' not in list(kwds.keys()):  # optional, default false
+            kwds['alternate'] = False
             
         Sound.__init__(self, **kwds)
         
@@ -284,11 +290,14 @@ class ClickTrain(Sound):
         o = self.opts
         out = []
         for i, start in enumerate(o['click_starts']):
+            sign = 1
+            if o['alternate'] and i%2 == 1:
+                sign = -1
             if i == 0:
-                out = click(self.time, o['rate'], 
+                out = sign*click(self.time, o['rate'], 
                         o['dbspl'], o['click_duration'], start)
             else:
-                out += click(self.time, o['rate'], 
+                out += sign*click(self.time, o['rate'], 
                         o['dbspl'], o['click_duration'], start)
         return out
     
@@ -993,7 +1002,7 @@ def pipnoise(t, rt, Fs, dBSPL, pip_dur, pip_start, seed):
     return pin
         
    
-def piptone(t, rt, Fs, F0, dBSPL, pip_dur, pip_start):
+def piptone(t, rt, Fs, F0, dBSPL, pip_dur, pip_start, alternate=False):
     """
     Create a waveform with multiple sine-ramped tone pips. Output is in 
     Pascals.
@@ -1014,6 +1023,8 @@ def piptone(t, rt, Fs, F0, dBSPL, pip_dur, pip_start):
         duration of pip including ramps
     pip_start : float
         list of starting times for multiple pips
+    alternate : bool
+        If true, successive pips are 180 deg out of phase
 
     Returns
     -------
@@ -1037,9 +1048,13 @@ def piptone(t, rt, Fs, F0, dBSPL, pip_dur, pip_start):
     ps = pip_start
     if ~isinstance(ps, list):
         ps = [ps]
-    for start in pip_start:
+    for i, start in enumerate(pip_start):
         ts = int(np.floor(start * Fs))
-        pin[ts:ts+pip.size] += pip
+        sign = 1
+        if i % 2 == 1:
+            sign = -1
+        
+        pin[ts:ts+pip.size] += sign*pip
 
     return pin
 

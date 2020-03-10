@@ -1,0 +1,21 @@
+# ABR Parameter file for click IO
+# All times in seconds, freq in Hz
+[protocol]
+protocolname = 'clickIO'
+stimulustype = 'click'
+[stimuli]
+stim_dur = 1.2
+delay = [0.003]
+nclicks = 30
+interval = 25e-3
+nreps = 10
+click_duration = 1e-4
+default_spl = 80.0
+stimulus_period = 1e-2
+alternate=true
+dblist = [90.0, 85.0, 80.0, 75.0, 70.0, 65.0, 60.0, 55.0, 
+         50.0, 45.0, 40.0, 35.0, 30.0, 25.0, 20.0, 15.0, 10.0]
+[recording]
+record_dur = 8e-3
+LPF = 3000.0
+

@@ -355,20 +355,25 @@ class PySounds:
     def playSound(self, wavel, waver, samplefreq, postduration=0.35):
         if self.hardware in ["pyaudio"]:
             self.audio = pyaudio.PyAudio()
+            print(dir(self.audio))
             chunk = 1024
             FORMAT = pyaudio.paFloat32
             CHANNELS = 2
             RATE = samplefreq
             if self.debugFlag:
                 print("PySounds.playSound: samplefreq: %f" % (RATE))
-            self.stream = self.audio.open(
+            try:
+                print('channels: ', CHANNELS, 'samplefreq: ', RATE)
+                self.stream = self.audio.open(
                 format=FORMAT,
                 channels=CHANNELS,
                 rate=int(RATE),
                 output=True,
-                input=True,
+                input=False,
                 frames_per_buffer=chunk,
             )
+            except:
+                raise ValueError('Error presenting audio through system')
             # play stream
             # print self.stream
             wave = np.zeros(2 * len(wavel))
@@ -383,7 +388,7 @@ class PySounds:
             wave[0::2] = waver
             wave[
                 1::2
-            ] = wavel  # order chosen so matches entymotic earphones on my macbookpro.
+            ] = wavel  # order chosen so matches etymotic earphones on my macbookpro.
             postdur = int(float(postduration * self.in_sampleFreq))
             rwave = self.read_array(len(wavel) + postdur, CHANNELS)
             self.write_array(wave)
