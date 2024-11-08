@@ -1,0 +1,28 @@
+# pysounds requirements
+
+# development utilities and general tools
+black>=24.8
+Pint>=0.24
+isort==5.0.2
+mypy>=1.13
+pytest==4.5.0
+toml
+
+# Specific requirements
+
+matplotlib>=3.9
+nose==1.3.7
+numpy>1.19.5
+psutil==5.6.7
+pyparsing==2.4.0
+resampy>=0.4
+scipy>1.5.0
+# pyaudio  # this will have to be done manually
+# get pyaudio win-amd64.whl file from https://www.lfd.uci.edu/~gohlke/pythonlibs/
+# make a downloads file in pysounds, and put it in the downloads directory
+# 
+pyqt6>=6.7
+pyqt6-sip>=13.8
+pyqtgraph>=0.13.6
+tdt
+
