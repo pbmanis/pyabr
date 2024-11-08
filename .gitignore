@@ -4,7 +4,7 @@
 
 
 # virtual envirionment
-pyabr_venv/
+pyabr_venv/*
 
 ### macOS ###
 # General
