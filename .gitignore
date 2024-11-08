@@ -5,6 +5,7 @@
 
 # virtual envirionment
 pyabr_venv/*
+ps_venv/*  # old virtual environment
 
 ### macOS ###
 # General
