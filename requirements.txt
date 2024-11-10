@@ -17,7 +17,7 @@ psutil==5.6.7
 pyparsing==2.4.0
 resampy>=0.4
 scipy>1.5.0
-# pyaudio  # this will have to be done manually
+pyaudio  # this will have to be done manually
 # get pyaudio win-amd64.whl file from https://www.lfd.uci.edu/~gohlke/pythonlibs/
 # make a downloads file in pysounds, and put it in the downloads directory
 # 

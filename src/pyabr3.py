@@ -29,33 +29,50 @@ import src.convert_nested_ordered_dict as convert_nested_ordered_dict
 import sound  # for waveform generation
 import src.PySounds as PySounds  # for access to hardware
 
+THREAD_PERIOD = 20  # thread period, in msec
+
 
 class WorkerSignals(QtCore.QObject):
     """
     Defines the signals available from a running worker thread.
     """
+
     finished = QtCore.pyqtSignal()
     error = QtCore.pyqtSignal(tuple)
     result = QtCore.pyqtSignal(object)
-    progress = QtCore.pyqtSignal(int)
+    paused = QtCore.pyqtSignal()
+    resume = QtCore.pyqtSignal()
+    stop = QtCore.pyqtSignal()
+    progress = QtCore.pyqtSignal()
+
 
 class Worker(QtCore.QRunnable):
     """
     Worker thread
     Inherits from QRunnable to handler worker thread setup, signals and wrap-up.
-    """
 
+     Supported signals are:
+
+        finished
+            No data
+        error
+            tuple (exctype, value, traceback.format_exc() )
+        result
+            object data returned from processing, anything
+
+    """
 
     def __init__(self, fn, *args, **kwargs):
         super(Worker, self).__init__()
         self.fn = fn
         self.args = args
         self.kwargs = kwargs
+        self._paused = False
+        self._running = False
         self.signals = WorkerSignals()
 
         # Add the callback to our kwargs
-        self.kwargs['progress_callback'] = self.signals.progress
-
+        self.kwargs["progress_callback"] = self.signals.progress
 
     @QtCore.pyqtSlot()
     def run(self):
@@ -63,15 +80,46 @@ class Worker(QtCore.QRunnable):
         Initialise the runner function with passed args, kwargs.
         """
         # Retrieve args/kwargs here; and fire processing using them
-        try:
-            result = self.fn(*self.args, **self.kwargs)
-            print("stim delivered")
-        except Exception as e:
-            self.signals.error.emit((e, traceback.format_exc()))
-        else:
-            self.signals.result.emit(result)  # Return the result of the processing
-        finally:
-            self.signals.finished.emit()  # Done
+        self._running = True
+
+        while self._running:  # while running, keep processing
+            if self._paused:
+                return None
+            else:
+                self.signals.progress.emit()
+                self._running = False
+            try:
+                result = self.fn(*self.args, **self.kwargs)
+                print("stim delivered")
+            except Exception as e:
+                self.signals.error.emit((e, traceback.format_exc()))
+            else:
+                self.signals.result.emit(result)  # Return the result of the processing
+            finally:
+                self.signals.finished.emit()  # Done
+            time.sleep(float(THREAD_PERIOD / 1000.0))  # Short delay to prevent excessive CPU usage
+
+    def pause(self):
+        # pause the thread - during some update operations, and
+        # when transmitting.
+        self._paused = True  # set False to block the thread
+        self.signals.paused.emit()
+
+    def resume(self):
+        # allow the VFO control to continue
+        self._paused = False
+        self.signals.resume.emit()
+
+    @QtCore.pyqtSlot()
+    def end_thread(self):
+        """
+        Stop the thread from running.
+        This is needed at the end of the program to terminate cleanly.
+        """
+        self._paused = False  # resume if paused
+        self._running = False  # set running False
+        self.signals.finished.emit()  # send a signal
+
 
 class PyABR(object):
     def __init__(self):
@@ -79,32 +127,35 @@ class PyABR(object):
         self.PS = PySounds.PySounds()
         # check hardware first
         self.hw, self.sfin, self.sfout = self.PS.getHardware()
-
+        self.worker = None
         self.ptreedata = None  # until the tree is built
         self.rawtoml = ""
         self.protocol = None
         self.debugFlag = True
-        self.known_protocols = [p.name for p in Path('protocols').glob("*.cfg")]
+        self.known_protocols = [p.name for p in Path("protocols").glob("*.cfg")]
         self.current_protocol = self.known_protocols[0]
-        self.read_protocol(self.current_protocol, update=False)
+        self.read_protocol(self.current_protocol, update=False) 
         self.buildGUI()
         self.update_protocol()
         self.counter = 0
+        self.ch1 = None
+        self.ch2 = None
+
+        self.TrialTimer = pg.QtCore.QTimer()
+        self.TrialTimer.setInterval(20)
+        self.TrialTimer.timeout.connect(self.recurring_timer)
+        self.TrialTimer.start()
 
         self.threadpool = QtCore.QThreadPool()
-        self.TrialTimer = QtCore.QTimer()
-        self.TrialTimer.setInterval(1000)
-        self.TrialTimer.timeout.connect(self.recurring_timer)
-        # self.timer.start()
+
         self.TrialCounter = 0
         # note after buildgui, all is done with callbacks
 
-
-    def read_protocol(self, protocolname, update:bool=False):
+    def read_protocol(self, protocolname, update: bool = False):
         """
         Read the current protocol
         """
-        protocol = configfile.readConfigFile(Path('protocols', protocolname))
+        protocol = configfile.readConfigFile(Path("protocols", protocolname))
         # print("protocol: ", protocol)
         # if isinstance(protocol['stimuli']["dblist"], str):
         #     protocol['stimuli']["dblist"] = list(eval(str))
@@ -113,7 +164,7 @@ class PyABR(object):
         #         protocol['stimuli']["freqlist"] = list(eval(str))
         protocol = convert_nested_ordered_dict.convert_nested_ordered_dict(protocol)
         # paste the raw string into the text box for reference
-        self.protocol = protocol   # the parameters in a dictionary... 
+        self.protocol = protocol  # the parameters in a dictionary...
         if update:
             self.update_protocol()
 
@@ -122,49 +173,47 @@ class PyABR(object):
         data = None
         for child in children:
             if child.name() == "Parameters":
-                 data = child
+                data = child
         if data is None:
             return
         for child in data.children():
             if child.name() == "wave_duration":
-                child.setValue(self.protocol['stimuli']["wave_duration"])
+                child.setValue(self.protocol["stimuli"]["wave_duration"])
             if child.name() == "stimulus_duration":
-                child.setValue(self.protocol['stimuli']['stimulus_duration'])
+                child.setValue(self.protocol["stimuli"]["stimulus_duration"])
             if child.name() == "stimulus_risefall":
-                child.setValue(self.protocol['stimuli']['stimulus_risefall'])
+                child.setValue(self.protocol["stimuli"]["stimulus_risefall"])
             if child.name() == "delay":
-                child.setValue(self.protocol['stimuli']['delay'])
+                child.setValue(self.protocol["stimuli"]["delay"])
             if child.name() == "nreps":
-                child.setValue(self.protocol['stimuli']['nreps'])
+                child.setValue(self.protocol["stimuli"]["nreps"])
             if child.name() == "stimulus_period":
-                child.setValue(self.protocol['stimuli']['stimulus_period'])
+                child.setValue(self.protocol["stimuli"]["stimulus_period"])
             if child.name() == "nstim":
-                child.setValue(self.protocol['stimuli']['nstim'])
+                child.setValue(self.protocol["stimuli"]["nstim"])
             if child.name() == "interval":
-                child.setValue(self.protocol['stimuli']['interval'])
+                child.setValue(self.protocol["stimuli"]["interval"])
             if child.name() == "alternate":
-                child.setValue(self.protocol['stimuli']['alternate'])
+                child.setValue(self.protocol["stimuli"]["alternate"])
             if child.name() == "default_frequency":
-                child.setValue(self.protocol['stimuli']['default_frequency'])
+                child.setValue(self.protocol["stimuli"]["default_frequency"])
             if child.name() == "default_spl":
-                child.setValue(self.protocol['stimuli']['default_spl'])
+                child.setValue(self.protocol["stimuli"]["default_spl"])
             if child.name() == "freqlist":
-                child.setValue(self.protocol['stimuli']['freqlist'])
+                child.setValue(self.protocol["stimuli"]["freqlist"])
             if child.name() == "dblist":
-                child.setValue(self.protocol['stimuli']['dblist'])
+                child.setValue(self.protocol["stimuli"]["dblist"])
         self.make_waveforms()
         self.stimulus_waveform.clearPlots()
         self.stimulus_waveform.plot(
-                    self.wave_time,
-                    self.wave_out,
-                    pen=pg.mkPen("y"),
-                )
+            self.wave_time,
+            self.wave_out,
+            pen=pg.mkPen("y"),
+        )
         self.stimulus_waveform.enableAutoRange()
         self.Dock_Recording.raiseDock()
 
-
-
-    def get_protocol(self): 
+    def get_protocol(self):
         """get_protocol Read the current protocol information and put it into
         the protocol dictionary
         """
@@ -172,41 +221,39 @@ class PyABR(object):
         data = None
         for child in children:
             if child.name() == "Parameters":
-                 data = child
+                data = child
         if data is None:
             return
         for child in data.children():
             if child.name() == "wave_duration":
-                self.protocol['stimuli']["wave_duration"] = child.value()
+                self.protocol["stimuli"]["wave_duration"] = child.value()
             if child.name() == "stimulus_duration":
-                self.protocol['stimuli']['stimulus_duration'] = child.value()
+                self.protocol["stimuli"]["stimulus_duration"] = child.value()
             if child.name() == "stimulus_risefall":
-                self.protocol['stimuli']['stimulus_risefall'] = child.value()
+                self.protocol["stimuli"]["stimulus_risefall"] = child.value()
             if child.name() == "delay":
-                self.protocol['stimuli']['delay'] = child.value()
+                self.protocol["stimuli"]["delay"] = child.value()
             if child.name() == "nreps":
-                self.protocol['stimuli']['nreps'] = child.value()
+                self.protocol["stimuli"]["nreps"] = child.value()
             if child.name() == "stimulus_period":
-                self.protocol['stimuli']['stimulus_period'] = child.value()
+                self.protocol["stimuli"]["stimulus_period"] = child.value()
             if child.name() == "nstim":
-                self.protocol['stimuli']['nstim'] = child.value()
+                self.protocol["stimuli"]["nstim"] = child.value()
             if child.name() == "interval":
-                self.protocol['stimuli']['interval'] = child.value()
+                self.protocol["stimuli"]["interval"] = child.value()
             if child.name() == "alternate":
-                self.protocol['stimuli']['alternate'] = child.value()
+                self.protocol["stimuli"]["alternate"] = child.value()
             if child.name() == "default_frequency":
-                self.protocol['stimuli']['default_frequency'] = child.value()
+                self.protocol["stimuli"]["default_frequency"] = child.value()
             if child.name() == "default_spl":
-                self.protocol['stimuli']['default_spl'] = child.value()
+                self.protocol["stimuli"]["default_spl"] = child.value()
             if child.name() == "freqlist":
-                self.protocol['stimuli']['freqlist'] = child.value()
+                self.protocol["stimuli"]["freqlist"] = child.value()
             if child.name() == "dblist":
-                self.protocol['stimuli']['dblist'] = child.value()
-
+                self.protocol["stimuli"]["dblist"] = child.value()
 
     def buildGUI(self):
         """Build GUI and window"""
-
 
         white = self.QColor(255, 255, 255)
         black = self.QColor(0, 0, 0)
@@ -234,8 +281,8 @@ class PyABR(object):
             "QToolTip { color: #ffffff; background-color: #2a82da; border: 1px solid white; }"
         )
         ptreewidth = 250
-        right_docks_width= 1024 - ptreewidth - 20
-        right_docs_height  = 800
+        right_docks_width = 1024 - ptreewidth - 20
+        right_docs_height = 800
         self.win = pg.QtWidgets.QMainWindow()
         self.dockArea = PGD.DockArea()
         self.win.setCentralWidget(self.dockArea)
@@ -249,10 +296,9 @@ class PyABR(object):
         self.win.resize(1380, 1024)
         # print(dir(self.dockArea))
         self.Dock_Params.raise_()
-        stim = self.protocol['stimuli']
+        stim = self.protocol["stimuli"]
         # Define parameters that control aquisition and buttons...
         params = [
-  
             {
                 "name": "Protocol",  # for selecting stimulus protocol
                 "type": "list",
@@ -263,22 +309,74 @@ class PyABR(object):
                 "name": "Parameters",  # for displaying stimulus parameters
                 "type": "group",
                 "children": [
-                    {"name": "wave_duration", "type": "float", "value":  stim["wave_duration"], "limits": [0.1, 10.0]},   # waveform duration in milli seconds
-                    {"name": "stimulus_duration", "type": "float", "value":  5e-3, "limits": [1e-3, 20e-3]},  # seconds
-                    {"name": "stimulus_risefall", "type": "float", "value":  5e-4, "limits": [1e-4, 10e-4]},  # seconds
-                    {"name": "delay", "type": "float", "value":  3e-3, "limits": [1e-3, 1.0]},  # seconds
-                    {"name": "nreps", "type": "float", "value":  500, "limits": [1, 2000]},  # number of repetitions
-                    {"name": "stimulus_period", "type": "float", "value":  1, "limits": [0.1, 10.0]},  # seconds
-                    {"name": "nstim", "type": "int", "value":  30, "limits": [1, 1000]},  # number of pips
-                    {"name": "interval", "type": "float", "value":  25e-3, "limits": [1e-3, 1e-1]}, # seconds
+                    {
+                        "name": "wave_duration",
+                        "type": "float",
+                        "value": stim["wave_duration"],
+                        "limits": [0.1, 10.0],
+                    },  # waveform duration in milli seconds
+                    {
+                        "name": "stimulus_duration",
+                        "type": "float",
+                        "value": 5e-3,
+                        "limits": [1e-3, 20e-3],
+                    },  # seconds
+                    {
+                        "name": "stimulus_risefall",
+                        "type": "float",
+                        "value": 5e-4,
+                        "limits": [1e-4, 10e-4],
+                    },  # seconds
+                    {
+                        "name": "delay",
+                        "type": "float",
+                        "value": 3e-3,
+                        "limits": [1e-3, 1.0],
+                    },  # seconds
+                    {
+                        "name": "nreps",
+                        "type": "int",
+                        "value": 50,
+                        "limits": [1, 2000],
+                    },  # number of repetitions
+                    {
+                        "name": "stimulus_period",
+                        "type": "float",
+                        "value": 1,
+                        "limits": [0.1, 10.0],
+                    },  # seconds
+                    {
+                        "name": "nstim",
+                        "type": "int",
+                        "value": 30,
+                        "limits": [1, 1000],
+                    },  # number of pips
+                    {
+                        "name": "interval",
+                        "type": "float",
+                        "value": 25e-3,
+                        "limits": [1e-3, 1e-1],
+                    },  # seconds
                     {"name": "alternate", "type": "bool", "value": True},
-                    {"name": "default_frequency", "type": "float", "value":  4000.0, "limits": [100.0, 100000.0]},
-                    {"name": "default_spl", "type": "float", "value":  80.0, "limits": [0.0, 100.0]},
-                    {"name": "freqlist", "type": "str", "value": ' [2000.0, 4000.0, 8000.0, 12000.0, 16000.0, 20000.0, 24000.0, 32000.0, 48000.0]'},
-                    {"name": "dblist", "type": "str", "value":  '[0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0]'},
+                    {
+                        "name": "default_frequency",
+                        "type": "float",
+                        "value": 4000.0,
+                        "limits": [100.0, 100000.0],
+                    },
+                    {"name": "default_spl", "type": "float", "value": 80.0, "limits": [0.0, 100.0]},
+                    {
+                        "name": "freqlist",
+                        "type": "str",
+                        "value": " [2000.0, 4000.0, 8000.0, 12000.0, 16000.0, 20000.0, 24000.0, 32000.0, 48000.0]",
+                    },
+                    {
+                        "name": "dblist",
+                        "type": "str",
+                        "value": "[0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0]",
+                    },
                 ],
             },
-
             {"name": "Comment", "type": "text", "value": ""},  # open comment field
             {
                 "name": "Actions",
@@ -288,7 +386,7 @@ class PyABR(object):
                     {"name": "Test Acquisition", "type": "action"},
                     {"name": "Start Acquisition", "type": "action"},
                     {"name": "Pause", "type": "action"},
-                    {"name": "Continue", "type": "action"},
+                    {"name": "Resume", "type": "action"},
                     {"name": "Stop", "type": "action"},
                     {"name": "Save Visible", "type": "action"},
                     {"name": "Load File", "type": "action"},
@@ -308,11 +406,9 @@ class PyABR(object):
                 ],
             },
             {
-                    "name": "Quit",
-                    "type": "action",
+                "name": "Quit",
+                "type": "action",
             },
-          
-
         ]
 
         ptree = ParameterTree()
@@ -347,7 +443,7 @@ class PyABR(object):
         self.stimulus_waveform.getAxis("left").setLabel("V", color="#0000ff")
         self.stimulus_waveform.setYRange(-10, 10.0)
         self.stimulus_waveform.getAxis("bottom").setLabel("t (msec)", color="#0000ff")
-        
+
         l.nextRow()  #
         l2 = l.addLayout(colspan=3, border=(50, 0, 0))  # embed a new layout
         l2.setContentsMargins(2, 2, 2, 2)
@@ -362,7 +458,6 @@ class PyABR(object):
         self.win.show()
         self.ptreedata.sigTreeStateChanged.connect(self.command_dispatcher)
 
-
     def command_dispatcher(self, param, changes):
 
         for param, change, data in changes:
@@ -370,8 +465,13 @@ class PyABR(object):
             # print("path: ", path)
             match path[0]:
                 case "Quit":
+                    self.TrialTimer.stop()
+                    if self.worker is not None:
+                        self.worker.end_thread()
+                        self.threadpool.waitForDone(5 * THREAD_PERIOD)  # end thread'
+                    self.win.close()
                     exit()
-                case  "Protocol":
+                case "Protocol":
                     self.current_protocol = data
                     self.read_protocol(data, update=False)
                 case "Actions":
@@ -382,9 +482,11 @@ class PyABR(object):
                             self.test_acquire()
                         case "Start Acquisition":
                             self.sequence_acquire()
-                        case "Stop/Pause":
-                            self.stop_pause()
-                        case "Continue":
+                        case "Stop":
+                            self.stop()
+                        case "Pause":
+                            self.pause()
+                        case "Resume":
                             self.continue_trials()
                         case "Save Visible":
                             self.save_visible()
@@ -426,8 +528,8 @@ class PyABR(object):
                     "map": self.map,
                 },
                 fh,
-            )   
-        
+            )
+
     def load_file(self):
         """
         Load a file
@@ -449,57 +551,28 @@ class PyABR(object):
     def update_plots(self):
         pass
 
-          
-
-    def sequence_acquire(self):
-        """
-        Present stimuli using sequences of intensities and/or
-        frequencies
-        """
-        
-        print("Starting sequenced acquisition")
-
-        self.stimulus_waveform.clearPlots()
-        self.Dock_Recording.raise_
-        if 'freqlist' not in list(self.protocol["stimuli"].keys()):
-            freqs = [1000.]
-        else:
-            freqs = self.protocol["stimuli"]["freqlist"]
-            for freq in freqs:
-                for db in self.protocol["stimuli"]["dblist"]:
-                    for n in range(self.protocol["stimuli"]["nreps"]):
-                        self.make_waveforms(dbspl=db, frequency=freq)
-                        self.stimulus_waveform.plot(
-                            self.wave_out.time,
-                            self.wave_out.sound,
-                            pen=pg.mkPen("y"),
-                        )
-                        self.stimulus_waveform.enableAutoRange()
-
-
     def update_ABR(self):
         print("Update ABR")
 
     def thread_complete(self):
         print("Thread complete")
-    
+
     def update_progress(self, progress):
         print("Progress: ", progress)
 
     def recurring_timer(self):
         self.counter += 1  # nothing really to do here.
 
-    
     def make_waveforms(self, dbspl=None, frequency=None):
         match self.protocol["protocol"]["stimulustype"]:
             case "click":
                 if dbspl is None:
                     dbspl = self.protocol["stimuli"]["default_spl"]
                 starts = np.cumsum(
-                    np.ones(self.protocol["stimuli"]["nstim"])*
-                    self.protocol["stimuli"]["interval"]
+                    np.ones(self.protocol["stimuli"]["nstim"])
+                    * self.protocol["stimuli"]["interval"]
                 )
-                starts += self.protocol["stimuli"]["delay"] 
+                starts += self.protocol["stimuli"]["delay"]
                 wave = sound.ClickTrain(
                     rate=self.sfout,
                     duration=self.protocol["stimuli"]["wave_duration"],
@@ -508,20 +581,21 @@ class PyABR(object):
                     click_starts=starts,
                     alternate=self.protocol["stimuli"]["alternate"],
                 )
+
                 wave.generate()
                 self.wave_out = wave.sound
                 self.wave_time = wave.time
-    
+
             case "tonepip":
                 if dbspl is None:
                     dbspl = self.protocol["stimuli"]["default_spl"]
                 if frequency is None:
                     frequency = self.protocol["stimuli"]["default_frequency"]
                 starts = np.cumsum(
-                    np.ones(self.protocol["stimuli"]["nstim"])*
-                    self.protocol["stimuli"]["interval"]
+                    np.ones(self.protocol["stimuli"]["nstim"])
+                    * self.protocol["stimuli"]["interval"]
                 )
-                starts += self.protocol["stimuli"]["delay"] 
+                starts += self.protocol["stimuli"]["delay"]
                 wave = sound.TonePip(
                     rate=self.sfout,
                     duration=self.protocol["stimuli"]["wave_duration"],
@@ -535,7 +609,7 @@ class PyABR(object):
                 wave.generate()
                 self.wave_out = wave.sound
                 self.wave_time = wave.time
-            
+
             case "interleaved_plateau":
                 if dbspl is None:
                     dbspl = self.protocol["stimuli"]["default_spl"]
@@ -545,8 +619,10 @@ class PyABR(object):
                 s0 = self.protocol["stimuli"]["delay"]
                 dbs = eval(self.protocol["stimuli"]["dblist"])
                 freqs = eval(self.protocol["stimuli"]["freqlist"])
-                wave_duration = s0 + len(dbs)*len(freqs)*dt + dt  # duration of the waveform
+                wave_duration = s0 + len(dbs) * len(freqs) * dt + dt  # duration of the waveform
                 print("Wave duration: ", wave_duration)
+                self.dblist = []
+                self.freqlist = []
                 n = 0
                 for j, dbspl in enumerate(dbs):
                     for i, frequency in enumerate(freqs):
@@ -557,9 +633,11 @@ class PyABR(object):
                             dbspl=dbspl,
                             pip_duration=self.protocol["stimuli"]["stimulus_duration"],
                             ramp_duration=self.protocol["stimuli"]["stimulus_risefall"],
-                            pip_start=[s0+n*dt],
-                            alternate=False, # do alternation separately here. self.protocol["stimuli"]["alternate"],
-                            )
+                            pip_start=[s0 + n * dt],
+                            alternate=False,  # do alternation separately here. self.protocol["stimuli"]["alternate"],
+                        )
+                        self.dblist.append(dbspl)
+                        self.freqlist.append(frequency)
                         n += 1
                         if i == 0 and j == 0:
                             wave_n.generate()
@@ -577,7 +655,9 @@ class PyABR(object):
                 s0 = self.protocol["stimuli"]["delay"]
                 dbs = eval(self.protocol["stimuli"]["dblist"])
                 freqs = eval(self.protocol["stimuli"]["freqlist"])
-                wave_duration = s0 + len(dbs)*len(freqs)*dt + dt  # duration of the waveform
+                self.dblist = []
+                self.freqlist = []
+                wave_duration = s0 + len(dbs) * len(freqs) * dt + dt  # duration of the waveform
                 print("Wave duration: ", wave_duration)
                 n = 0
                 for i, frequency in enumerate(freqs):
@@ -590,9 +670,11 @@ class PyABR(object):
                             dbspl=dbspl,
                             pip_duration=self.protocol["stimuli"]["stimulus_duration"],
                             ramp_duration=self.protocol["stimuli"]["stimulus_risefall"],
-                            pip_start=[s0+n*dt],
-                            alternate=False, # do alternation separately here. self.protocol["stimuli"]["alternate"],
-                            )
+                            pip_start=[s0 + n * dt],
+                            alternate=False,  # do alternation separately here. self.protocol["stimuli"]["alternate"],
+                        )
+                        self.dblist.append(dbspl)
+                        self.freqlist.append(frequency)
                         n += 1
                         if i == 0 and j == 0:
                             wave_n.generate()
@@ -600,8 +682,7 @@ class PyABR(object):
                             self.wave_time = wave_n.time
                         else:
                             self.wave_out += wave_n.generate()
-                    
-        
+
             case "interleaved_random":
                 if dbspl is None:
                     dbspl = self.protocol["stimuli"]["default_spl"]
@@ -611,7 +692,7 @@ class PyABR(object):
                 s0 = self.protocol["stimuli"]["delay"]
                 dbs = eval(self.protocol["stimuli"]["dblist"])
                 freqs = eval(self.protocol["stimuli"]["freqlist"])
-                wave_duration = s0 + len(dbs)*len(freqs)*dt + dt  # duration of the waveform
+                wave_duration = s0 + len(dbs) * len(freqs) * dt + dt  # duration of the waveform
                 print("Wave duration: ", wave_duration)
                 n = 0
                 dbfr = np.tile(dbs, len(freqs))
@@ -620,75 +701,133 @@ class PyABR(object):
                 np.random.shuffle(indices)  # in place.
                 self.dblist = dbfr[indices]
                 self.freqlist = frdb[indices]  # save the order so we can match the responses
-                for n, isn in enumerate(indices):        
-                        wave_n = sound.TonePip(
-                            rate=self.sfout,
-                            duration=wave_duration,
-                            f0=frdb[isn],
-                            dbspl=dbfr[isn],
-                            pip_duration=self.protocol["stimuli"]["stimulus_duration"],
-                            ramp_duration=self.protocol["stimuli"]["stimulus_risefall"],
-                            pip_start=[s0+n*dt],
-                            alternate=False, # do alternation separately here. self.protocol["stimuli"]["alternate"],
-                            )
-                        if n == 0:
-                            wave_n.generate()
-                            self.wave_out = wave_n.sound
-                            self.wave_time = wave_n.time
-                        else:
-                            self.wave_out += wave_n.generate()
-
+                for n, isn in enumerate(indices):
+                    wave_n = sound.TonePip(
+                        rate=self.sfout,
+                        duration=wave_duration,
+                        f0=frdb[isn],
+                        dbspl=dbfr[isn],
+                        pip_duration=self.protocol["stimuli"]["stimulus_duration"],
+                        ramp_duration=self.protocol["stimuli"]["stimulus_risefall"],
+                        pip_start=[s0 + n * dt],
+                        alternate=False,  # do alternation separately here. self.protocol["stimuli"]["alternate"],
+                    )
+                    if n == 0:
+                        wave_n.generate()
+                        self.wave_out = wave_n.sound
+                        self.wave_time = wave_n.time
+                    else:
+                        self.wave_out += wave_n.generate()
 
     def test_acquire(self):
         """
         present and collect responses without saving - using
         abbreviated protocol
         """
-        
+
         self.Dock_Recording.raiseDock()
         self.app.processEvents()
         print("Starting test acquisition")
         self.TrialCounter = 0
         self.make_waveforms()
         self.stimulus_waveform.clearPlots()
-        self.stimulus_waveform.plot(
-            self.wave_time, self.wave_out, pen=pg.mkPen("y")
-        )
+        self.stimulus_waveform.plot(self.wave_time, self.wave_out, pen=pg.mkPen("y"))
         self.stimulus_waveform.enableAutoRange()
         self.Dock_Recording.raiseDock()
         self.Dock_Recording.update()
+        self.start_player()
+
+    def start_player(self):
         self.TrialTimer.setInterval(int(self.protocol["stimuli"]["stimulus_period"]))
         self.TrialTimer.timeout.connect(self.next_trial)
         self.TrialTimer.start()
-        self.stimulus_state = "running"
+        self.stimulus_state = "runningf"
 
-        worker = Worker(self.play_waveforms)
-        worker.signals.result.connect(self.update_ABR)
-        worker.signals.finished.connect(self.thread_complete)
-        worker.signals.progress.connect(self.update_progress)
+        self.worker = Worker(self.play_waveforms)
+        self.worker.signals.result.connect(self.update_ABR)
+        self.worker.signals.finished.connect(self.thread_complete)
+        self.worker.signals.progress.connect(self.update_progress)
+        self.worker.signals.paused.connect(self.pause)
+        self.worker.signals.resume.connect(self.continue_trials)
+        self.worker.signals.stop.connect(self.stop)
 
-            
+    def make_and_plot(self, dbspl=None, frequency=None):
+        self.make_waveforms(dbspl=dbspl, frequency=frequency)
+        self.stimulus_waveform.clearPlots()
+        self.stimulus_waveform.plot(self.wave_time, self.wave_out, pen=pg.mkPen("y"))
+        self.stimulus_waveform.enableAutoRange()
+
+    def sequence_acquire(self):
+        """
+        Present stimuli using sequences of intensities and/or
+        frequencies
+        """
+
+        print("Starting sequenced acquisition")
+
+        self.stimulus_waveform.clearPlots()
+        self.Dock_Recording.raiseDock()
+        self.app.processEvents()
+        print("protocol: ", self.protocol["protocol"]["stimulustype"])
+        if not isinstance(self.protocol["stimuli"]["dblist"], list):
+            dblist = eval(self.protocol["stimuli"]["dblist"])
+        else:
+            dblist = self.protocol["stimuli"]["dblist"]
+        if not isinstance(self.protocol['stimuli']['freqlist'], list):
+            freqlist = eval(self.protocol["stimuli"]["freqlist"])
+        else:
+            freqlist = self.protocol["stimuli"]["freqlist"]
+
+        match self.protocol["protocol"]["stimulustype"]:
+            case "click":
+                self.dblist = dblist
+                self.freqlist = None  # not used
+                for db in dblist:
+                    self.make_and_plot(dbspl=db)
+                    for n in range(self.protocol["stimuli"]["nreps"]):
+                        self.start_player()
+            case "tonepip":
+                self.dblist = dblist
+                self.freqlist = freqlist
+                for freq in freqlist:
+                    for db in dblist:
+                        self.make_and_plot(dbspl=db, frequency=freq)
+                        for n in range(self.protocol["stimuli"]["nreps"]):
+                            self.start_player()
+
+            case ["interleaved_plateau", "interleaved_ramp", "interleaved_random"]:
+                self.make_and_plot()
+                for n in range(self.protocol["stimuli"]["nreps"]):
+                    self.start_player()
+
     def play_waveforms(self):
         # self.TrialTimer.timeout.connect(self.next_trial)
         for n in range(self.protocol["stimuli"]["nreps"]):
             self.next_trial()
             t = np.arange(0, 1, 0.001)
             self.plot_ABR_Raw.plot(t, np.random.randn(len(t)), pen=pg.mkPen("c"))
-            self.plot_ABR_Raw.plot(np.arange(0,  1./44100.*len(self.ch1) , 1/44100.), self.ch1, pen=pg.mkPen("y"))
+            if self.ch1 is not None:
+                self.plot_ABR_Raw.plot(
+                    np.arange(0, 1.0 / 44100.0 * len(self.ch1), 1 / 44100.0),
+                    self.ch1,
+                    pen=pg.mkPen("y"),
+                )
             self.plot_ABR_Raw.update()
         self.stop()
 
     def stop(self):
         self.TrialTimer.stop()
         self.stimulus_state = "stopped"
-    
+
     def pause(self):
+        self.worker.pause()
         self.TrialTimer.stop()
         self.stimulus_state = "paused"
 
     def continue_trials(self):
         if self.stimulus_state == "paused":
             self.stimulus_state = "running"
+            self.worker.resume()
             self.TrialTimer.start()
             self.next_trial()
 
@@ -696,7 +835,7 @@ class PyABR(object):
     def next_trial(self):
         if self.debugFlag:
             print("NextTrial: entering", self.TrialCounter)
-        if self.stimulus_state in ['stopped', 'paused']:
+        if self.stimulus_state in ["stopped", "paused"]:
             return
         self.TrialTimer.stop()
         if self.TrialCounter <= self.protocol["stimuli"]["nreps"]:
