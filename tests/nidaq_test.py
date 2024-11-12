@@ -3,9 +3,10 @@
 import sys, time, numpy
 # sys.path.append("..\\cheader")
 from nidaq import cheader
-
 from nidaq import NIDAQ
 import nidaq
+import nidaqmx
+from nidaqmx.constants import AcquisitionType, Edge, VoltageUnits
 
 print("Assert num devs > 0:")
 assert(len(NIDAQ.listDevices()) > 0)
@@ -59,18 +60,34 @@ def contReadTest():
 ## Output task
 
 def outputTest():
-  task = dev0.createTask()
-  task.CreateAOVoltageChan("/Dev1/ao0", "ao0", -10., 10., nidaq.Val_Volts, None)
-  print('HERE!!!')
-  task.CfgSampClkTiming(None, 10000.0, nidaq.Val_Rising, nidaq.Val_FiniteSamps, 1000)
-  
-  data = numpy.zeros((1000,), dtype=numpy.float64)
-  data[200:400] = 5.0
-  data[600:800] = 5.0
-  task.write(data)
-  task.start()
-  time.sleep(0.1)
-  task.stop()
+  with nidaqmx.Task() as task:
+    print(dir(task))
+    #   task = dev0.createTask()
+    # task.CreateAOVoltageChan("/Dev1/ao0", "ao0", -10., 10., nidaq.Val_Volts, None)
+    # print('HERE!!!')
+    task.ao_channels.add_ao_voltage_chan("/dev1/ao0", min_val=-10., max_val=10.)
+    clock = 10000.0
+    duration = 1.0 # seconds
+    ndata = int(duration*clock)
+    freq = 1000.0
+    task.timing.cfg_samp_clk_timing(clock, source="",
+                                    active_edge=Edge.RISING, 
+                                    sample_mode=AcquisitionType.FINITE, samps_per_chan=ndata)
+    t = numpy.arange(0, duration, 1./clock)
+    data = numpy.ones((ndata,), dtype=numpy.float64)*numpy.sin(2.0*numpy.pi*freq*t)
+    import pyqtgraph as pg
+    import sys
+    pg.plot(data)
+    if (sys.flags.interactive != 1) or not hasattr(pg.QtCore, "PYQT_VERSION"):
+          pg.QtGui.QGuiApplication.instance().exec()
+
+    print(len(data), data.max(), data.min())
+    # data[200:400] = 5.0
+    # data[600:800] = 5.0
+    task.write(data)
+    task.start()
+    time.sleep(duration)
+    task.stop()
   
 
 
@@ -130,7 +147,7 @@ def syncIOTest():
   return data2
 
 
-
+outputTest()
 
 
 

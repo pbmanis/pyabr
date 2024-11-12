@@ -16,9 +16,14 @@ import scipy.signal
 from matplotlib import colors as colors
 from matplotlib import pyplot as mpl
 
-from pysound import pystim as pystim
-from pysound import sound as sound
+import src.sound as sound  # for waveform generation
+import src.PySounds as PySounds  # for access to hardware
+import src.pystim as pystim
 
+from nidaq import cheader
+
+from nidaq import NIDAQ
+import nidaq
 # define available waveforms:
 
 stims = OrderedDict([
@@ -40,10 +45,10 @@ def play(args):
     stimarg = args.stimtype
     plots = args.showplot
 
-    PS = pystim.PyStim()
+    PS = pystim.PyStim(required_hardware=["NIDAQ", "PA5", "RP21"])
 
     cf = 2e3
-    Fs = PS.out_sampleFreq  # sample frequency
+    Fs = pystim.Stimulus_Parameters.out_sampleFreq  # sample frequency
     level = 80.0
     seed = 34978
     fmod = 20.0

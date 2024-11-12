@@ -63,23 +63,34 @@ import platform
 import struct
 import time
 import numpy as np
+import pyqtgraph as pg
+import sys
 
-from pysound import sound as sound
+import src.PySounds
+import src.pystim as pystim
 
 opsys = platform.system()
 nidaq_available = False
 if opsys in ["nt", "Windows"]:
     try:
-        import nidaqmx
+        print("tyring nidaqmx")
+        import nidaq.nidaq as nidaq
+        print("nidaqmx ok, now trying tdt")
         import tdt
+        print('tdtok, now win32com.client?')
 
         # import nidaq
         import win32com.client
+        print("win32 com client ok; now nidaqmx.constants")
+        import nidaqmx
         from nidaqmx.constants import AcquisitionType, Edge, VoltageUnits
+        print("nidaqmx constants ok")
 
         nidaq_available = True
     except:
-        pass
+        raise ValueError("some import failed")
+
+
 
 if opsys in ["Darwin", "Linux"] or nidaq_available == False:
     import pyaudio
@@ -152,7 +163,7 @@ class PyStim:
         self.Stimulus = Stimulus_Parameters() 
         self.find_hardware()
 #            device_info={"devicename": devicename}
-#        )  # population the self.State.hardware list
+#        )  # populate the self.State.hardware list
         self.TankName = []
 
     def find_hardware(self):
@@ -167,24 +178,31 @@ class PyStim:
         None
         
         """
+        print(self.State.hardware)
+        print("opsys: ", opsys)
+        print("nidaq avail: ", nidaq_available)
         if (
             opsys in ["Darwin", "Linux"] or nidaq_available is False
         ):  # If not on a Windows system, just set up soundcard
             self.setup_soundcard()
             self.State.hardware.append("Soundcard")
             self.Stimulus.out_samplefreq = 44100
-        else:
+        else:  # windows
             if "NIDAQ" in self.State.required_hardware and self.setup_nidaq():
                 self.State.hardware.append("NIDAQ")
                 self.setup_nidaq()
-            if "RP21" in self.State.required_hardware and self.setup_RP21(
-                "c:\\TDT\\OpenEx\\MyProjects\\Tetrode\\RCOCircuits\\tone_search.rcx"
-            ):
-                self.State.hardware.append("RP21")
+            if "RP21" in self.State.required_hardware:
+                print("looking for RP21")
+                if self.setup_RP21(
+                    # "c:\\TDT\\OpenEx\\MyProjects\\Tetrode\\RCOCircuits\\tone_search.rcx"
+                    "c:\\users\\experimenters\\desktop\\pyabr\\tdt\\abrs.rcx"
+                ):
+                    self.State.hardware.append("RP21")
             if "PA5" in self.State.required_hardware and self.setup_PA5():
                 self.State.hardware.append("PA5")
             if "RZ5D" in self.State.required_hardware and self.setup_RZ5D():
                 self.State.hardware.append("RZ5D")
+        print("Hardware found: ", self.State.hardware)
 
     def setup_soundcard(self):
         if self.State.debugFlag:
@@ -247,17 +265,23 @@ class PyStim:
         rcofile : str (default : '')
             The RCO file to connect to. Must be full path.
         """
-
+        print("Setting up RP21")
         self.RP21_rcofile = rcofile
+        if Path(self.RP21_rcofile).is_file():
+            print("RP21 rco file exists")
+        else:
+            print("Rp21 rco file not found")
         self.RP21 = win32com.client.Dispatch("RPco.x")  # connect to RP2.1
-        a = self.RP21.ConnectRP2("USB", 1)
-        if a > 0 and self.State.debugFlag:
+        print("self.RP21: ", self.RP21)
+        a = self.RP21.ConnectRP2("USB", 0)
+        print("a: ", a)
+        if a > 0:
             print("pystim.setup_RP21: RP2.1 Connect is good: %d" % (a))
         else:
             print("pystim.setup_RP21: Failed to connect to RP2.1")
             return False
         self.RP21.ClearCOF()
-        self.samp_cof_flag = 5  # 2 is for 24.4 kHz
+        self.samp_cof_flag = 4  # 2 is for 24.4 kHz
         self.samp_flist = [
             6103.5256125,
             12210.703125,
@@ -268,14 +292,15 @@ class PyStim:
         ]
         if self.samp_cof_flag > 5:
             self.samp_cof_flag = 5
+
         a = self.RP21.LoadCOFsf(self.RP21_rcofile, self.samp_cof_flag)
         if a > 0:
             print(
                 "pystim.setup_RP21: File %s loaded\n      and sample rate set to %f"
-                % (self.RP21_rcofile, self.samp_fllist[self.camp_cof_flag])
+                % (self.RP21_rcofile, self.samp_flist[self.samp_cof_flag])
             )
         else:
-            print("pysounds.init: Error loading RCO file %s, error = %d" % (rcofile, a))
+            print("pystim.setup_RP21: Error loading RCO file %s, error = %d" % (rcofile, a))
             return False
         self.Stimulus.out_sampleFreq = self.samp_flist[self.samp_cof_flag]
         self.Stimulus.in_sampleFreq = self.samp_flist[self.samp_cof_flag]
@@ -347,7 +372,7 @@ class PyStim:
         wavel,
         waver=None,
         samplefreq=44100,
-        postduration=0.05,
+        postduration=0.1,
         attns=[20.0, 20.0],
         isi=1.0,
         reps=1,
@@ -382,10 +407,12 @@ class PyStim:
             flag to force storage of data at end of run
         
         """
+        # print("Playsound called")
         if storedata:
             runmode = "Record"
         else:
             runmode = "Preview"
+        # print("hardware: ", self.State.hardware)
         if "pyaudio" in self.State.hardware:
             self.audio = pyaudio.PyAudio()
             chunk = 1024
@@ -422,9 +449,95 @@ class PyStim:
             self.stream.close()
             self.audio.terminate()
             return
+        
+        if "NIDAQ" in self.State.hardware:
+            # print("Using NIDAQ")
+            dev = "/Dev1"
+            self.NIDAQ_task = nidaqmx.Task()
+            self.NIDAQ_task.ao_channels.add_ao_voltage_chan(f"{dev}/ao0", min_val=-10., max_val=10.)
+            clock = self.Stimulus.out_sampleFreq
+            ndata = len(wavel)
+            self.NIDAQ_task.timing.cfg_samp_clk_timing(clock, source="",
+                                            active_edge=Edge.RISING, 
+                                            sample_mode=AcquisitionType.FINITE, samps_per_chan=ndata)
+    
+            daqwave = np.zeros(ndata*2)
+            (wavel, clipl) = self.clip(wavel, 10.0)
+            if len(waver) is not None:
+                (waver, clipr) = self.clip(waver, 10.0)
+
+            daqwave[0 : len(wavel)] = wavel
+            if len(waver) is not None:
+                daqwave[len(wavel) :] = waver
+            # concatenate channels (using "groupbychannel" in writeanalogf64)
+            dur = ndata / float(samplefreq)
+            self.NIDAQ_task.write(wavel)
+
+            
+            if "RP21" in self.State.hardware:
+                self.trueFreq = self.RP21.GetSFreq()
+                Ndata = np.ceil((dur + postduration) * self.trueFreq)
+                self.RP21.SetTagVal(
+                    "REC_Size", Ndata
+                )  # old version using serbuf  -- with
+                # new version using SerialBuf, can't set data size - it is fixed.
+                # however, old version could not read the data size tag value, so
+                # could not determine when buffer was full/acquisition was done.
+            if "PA5" in self.State.hardware:
+                self.setAttens(0.0, 0.0)  # set equal, but not at minimum...
+
+            self.NIDAQ_task.start()  # start the NI AO task
+            if "RP21" in self.State.hardware:
+                a = self.RP21.Run()  # start the RP2.1 processor...
+                a = self.RP21.SoftTrg(
+                    1
+                )  # and trigger it. RP2.1 will in turn start the ni card
+            self.PPGo = False
+            while not self.NIDAQ_task.is_task_done():  # wait for AO to finish?
+                if not self.PPGo:  # while waiting, check for stop.
+                    time.sleep(dur)
+                    if "RP21" in self.State.hardware:
+                        self.RP21.Halt()
+                    # self.NIDAQ_task.stop()
+                    # return
+            self.NIDAQ_task.stop()  # done, so stop the output.
+            self.NIDAQ_task.close()
+            if "PA5" in self.State.hardware:
+                self.setAttens()  # attenuators down (there is noise otherwise)
+            # read the data...
+            curindex1 = self.RP21.GetTagVal("Index1")
+            # print(curindex1)
+            curindex2 = self.RP21.GetTagVal("Index2")
+            if "RP21" in self.State.hardware:
+                self.RP21.Halt()
+            #     while (
+            #         curindex1 < Ndata or curindex2 < Ndata
+            #     ):  # wait for input data to be sampled
+            #         # if not self.PPGo:  # while waiting, check for stop.
+            #         #     self.RP21.Halt()
+            #         #     return
+            #         curindex1 = self.RP21.GetTagVal("Index1")
+            #         curindex2 = self.RP21.GetTagVal("Index2")
+            #         print(curindex1, curindex2)
+            # self.NIDAQ_task.stop()
+            if "RP21" in self.State.hardware:
+                self.ch2 = self.RP21.ReadTagV("Data_out2", 0, Ndata)
+                # ch2 = ch2 - mean(ch2[1:int(Ndata/20)]) # baseline: first 5% of trace
+                self.ch1 = self.RP21.ReadTagV("Data_out1", 0, Ndata)
+                self.RP21.Halt()
+                self.t_stim = np.arange(0, len(wavel)/self.Stimulus.out_sampleFreq, 1./self.Stimulus.out_sampleFreq )
+                self.t_record = np.arange(0, Ndata/self.trueFreq, 1/self.trueFreq )
+                # pg.plot(t_stim, wavel)
+                # pg.plot(t_record, self.ch1)
+                # if (sys.flags.interactive != 1) or not hasattr(pg.QtCore, "PYQT_VERSION"):
+                #     pg.QtGui.QGuiApplication.instance().exec()
+
+
+
 
         if "PA5" in self.State.hardware:
-            self.setAttens(atten_left=attns, atten_right=attns)
+            # print("539: attns: ", attns)
+            self.setAttens(atten_left=attns[0], atten_right=attns[1])
 
         if "RZ5D" in self.State.hardware:
             swcount = -1
@@ -705,12 +818,14 @@ def read_array(stream, size, channels=1):
 
 if __name__ == "__main__":
 
-    p = PyStim(hdw=["PA5", "NIDAQ", "RZ5D"], devicename="dev1")
+    # p = PyStim(hdw=["PA5", "NIDAQ", "RZ5D"], devicename="dev1")
+    p = PyStim(hdw=["PA5", "NIDAQ", "RP21"], devicename="dev1")
+ 
     ni_sampld_frequency = 100000
     w = np.cos(2 * np.pi * 2000.0 * np.arange(0, 0.2, 1.0 / ni_sample_frequency))
     p.setAttens(atten_left=30)
     p._present_stim(w)
     time.sleep(2.0)
-    p.RZ5D.setModeStr("Idle")
-    p.task.stop()
+    # p.RZ5D.setModeStr("Idle")
+    # p.task.stop()
     p.setAttens(atten_left=120)
