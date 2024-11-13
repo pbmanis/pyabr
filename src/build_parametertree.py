@@ -81,7 +81,18 @@ def build_parametertree(known_protocols, current_protocol, stimuli:dict):
                 },
             ],
         },
-        {"name": "Comment", "type": "text", "value": ""},  # open comment field
+        {"name": "Subject Data",
+            "type": "group",
+            "children": [
+                {"name": "Subject ID", "type": "str", "value": ""},  # open comment field
+                {"name": "Age", "type": "str", "value": ""},
+                {"name": "Sex", "type": "str", "value": ""},
+                {"name": "Weight", "type": "float", "value": 0.0},
+                {"name": "Strain", "type": "str", "value": ""},
+                {"name": "Genotype", "type": "str", "value": "WT"},
+                {"name": "Treat Group", "type": "str", "value": ""},
+            ],
+        },
         {
             "name": "Actions",
             "type": "group",

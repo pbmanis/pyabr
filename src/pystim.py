@@ -57,17 +57,15 @@ New:
 
 import ctypes
 from dataclasses import dataclass, field
-import os
+
 from pathlib import Path
 import platform
 import struct
 import time
 import numpy as np
-import pyqtgraph as pg
-import sys
 
-import src.PySounds
-import src.pystim as pystim
+
+
 
 opsys = platform.system()
 nidaq_available = False
@@ -169,6 +167,7 @@ class PyStim:
         self.ch2 = None
         self.trueFreq = None  # actual input acquisiton sample frequency
         self.audio = None  # pyaudio object
+        self.NIDAQ_task = None
 
     def find_hardware(self):
         """
@@ -356,6 +355,12 @@ class PyStim:
     def getHardware(self):
         return (self.State.hardware, self.Stimulus.out_sampleFreq, self.Stimulus.in_sampleFreq)
 
+    def cleanup_NIDAQ(self):
+        if self.NIDAQ_task is not None:
+            self.NIDAQ_task.stop()  # done, so stop the output.
+            self.NIDAQ_task.close()
+            self.NIDAQ_task = None
+
     # internal debug flag to control printing of intermediate messages
     def debugOn(self):
         self.State.debugFlag = True
@@ -512,7 +517,7 @@ class PyStim:
                 # however, old version could not read the data size tag value, so
                 # could not determine when buffer was full/acquisition was done.
             if "PA5" in self.State.hardware:
-                self.setAttens(0.0, 0.0)  # set equal, but not at minimum...
+                self.setAttens(atten_left=attns[0], atten_right=attns[1])
 
             self.NIDAQ_task.start()  # start the NI AO task
             if "RP21" in self.State.hardware:
@@ -521,15 +526,17 @@ class PyStim:
                     1
                 )  # and trigger it. RP2.1 will in turn start the ni card
             self.PPGo = False
-            while not self.NIDAQ_task.is_task_done():  # wait for AO to finish?
+            print("duration: ", dur)
+            while self.NIDAQ_task is not None and not self.NIDAQ_task.is_task_done():  # wait for AO to finish?
                 if not self.PPGo:  # while waiting, check for stop.
                     time.sleep(dur)
                     if "RP21" in self.State.hardware:
                         self.RP21.Halt()
                     # self.NIDAQ_task.stop()
                     # return
-            self.NIDAQ_task.stop()  # done, so stop the output.
-            self.NIDAQ_task.close()
+            self.cleanup_NIDAQ()
+            # self.NIDAQ_task.stop()  # done, so stop the output.
+            # self.NIDAQ_task.close()
             if "PA5" in self.State.hardware:
                 self.setAttens()  # attenuators down (there is noise otherwise)
             # read the data...
@@ -547,7 +554,7 @@ class PyStim:
             #         curindex1 = self.RP21.GetTagVal("Index1")
             #         curindex2 = self.RP21.GetTagVal("Index2")
             #         print(curindex1, curindex2)
-            # self.NIDAQ_task.stop()
+
             if "RP21" in self.State.hardware:
                 self.ch2 = self.RP21.ReadTagV("Data_out2", 0, self.Ndata)
                 # ch2 = ch2 - mean(ch2[1:int(Ndata/20)]) # baseline: first 5% of trace
@@ -665,7 +672,7 @@ class PyStim:
         """
         self.stop_nidaq()
         self.RZ5D.setModeStr("Idle")
-        self.setAttens(atten_left=120)
+        self.setAttens()
 
     def arm_NIDAQ(self):
         """
@@ -856,4 +863,4 @@ if __name__ == "__main__":
     time.sleep(2.0)
     # p.RZ5D.setModeStr("Idle")
     # p.task.stop()
-    p.setAttens(atten_left=120)
+    p.setAttens()

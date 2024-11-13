@@ -31,7 +31,7 @@ from src.build_parametertree import build_parametertree
 import src.read_calibration as read_calibration
 
 THREAD_PERIOD = 20  # thread period, in msec
-
+MAX_CLICK = 105.1  # SPL for maximum click 
 
 class Worker(QObject):  # (QtCore.QRunnable):
     """
@@ -66,9 +66,10 @@ class Worker(QObject):  # (QtCore.QRunnable):
 
     signal_finished = pyqtSignal()  # protocol is ALL done
     signal_error = pyqtSignal(tuple)  # protocol has errored
-    signal_data_ready = pyqtSignal(np.ndarray,)  #  returns 2 channels
+    signal_data_ready = pyqtSignal(np.ndarray, int, int)  #  returns 2 channels in the array, then the wave number and trial counter
     signal_paused = pyqtSignal()  # status of running: paused or not
     signal_stop = pyqtSignal()  # stop protocol entirely
+
     signal_progress = pyqtSignal(
         str, int, int, int, int, float, float
     )  # update display of progress. Pass name, wave count, nwaves, rep count, nreps, db and fr
@@ -136,7 +137,7 @@ class Worker(QObject):  # (QtCore.QRunnable):
         res = self.sound_func.retrieveRP21_inputs()
         self.chdata = np.array(res)
         # self.ch2_data = np.array(res)
-        self.signal_data_ready.emit(self.chdata)
+        self.signal_data_ready.emit(self.chdata, self.wave_counter, self.repetition_counter)
 
     def next_stimulus(self):
         """
@@ -189,19 +190,26 @@ class Worker(QObject):  # (QtCore.QRunnable):
                 self._running = False
                 return
 
-    
+            listed_attn = self.wavekeys[self.wave_counter][1]
+            if self.wavetype in ["click"]:
+                attn = MAX_CLICK - listed_attn
+            else:
+                attn = listed_attn # for tones, just use the attenuation
+            
             self.sound_func.play_sound(
                 wave,
                 wave,
                 samplefreq=sfout,
-                attns=[self.wavekeys[self.wave_counter][1], self.wavekeys[self.wave_counter][1]],
+                attns=[attn, attn],
             )
             self.retrieve_data()
 
         else:  # other stimuli.
+            listed_attn = self.wavekeys[self.wave_counter][1]
             wave = self.wave_matrix[self.wavekeys[0]]["sound"]
             sfout = self.wave_matrix[self.wavekeys[0]]["rate"]
-            self.sound_func.play_sound(wave, wave, samplefreq=sfout, attns=[10, 10])
+            self.sound_func.play_sound(wave, wave, samplefreq=sfout, attns=[listed_attn, listed_attn])
+
             self.retrieve_data()
 
         return
@@ -209,12 +217,13 @@ class Worker(QObject):  # (QtCore.QRunnable):
     @pyqtSlot()
     def setWaveforms(self, wave: dict, protocol: dict, sound_function: object):
         # get the data we need and trigger the stimulus/acquisition.
+        print("set waveforms")
         self._running = False
         self.sound_func = sound_function
         self.wave_matrix = wave
         self.protocol = protocol
         self.wavekeys = list(self.wave_matrix.keys())
-        self.wave_counterer = 0  # reset counter of the waveforms
+        self.wave_counter = 0  # reset counter of the waveforms
         self.repetition_counter = 0
         self.wavetype = self.wavekeys[0][0]  # get the first key of the first waveform.
         self.n_waves = len(self.wavekeys)
@@ -241,6 +250,7 @@ class Worker(QObject):  # (QtCore.QRunnable):
         # stops stimulation, and
         self._running = False  # stops running
         self._paused = False  # also kills ability to resume.
+
 
     @pyqtSlot()
     def finished(self):
@@ -294,6 +304,8 @@ class PyABR(QtCore.QObject):
         self.PR = protocol_reader.ProtocolReader(ptreedata=self.ptreedata)
         self.PR.read_protocol(protocolname=self.current_protocol)
         self.stim = self.PR.get_current_protocol()
+        self.acq_mode = "test"
+        self.basefn = None  # base file path/name for saving data
         self.buildGUI()
 
         self.PR.update_protocol(self.ptreedata)
@@ -321,6 +333,7 @@ class PyABR(QtCore.QObject):
         self.signal_pause.connect(self.Presenter.pause)
         self.signal_resume.connect(self.Presenter.resume)
         self.signal_stop.connect(self.Presenter.stop)
+        self.signal_stop.connect(self.PS.cleanup_NIDAQ)
         self.signal_quit.connect(self.Presenter.quit)
 
         # note after buildgui, everything is done with callbacks from the GUI
@@ -471,6 +484,7 @@ class PyABR(QtCore.QObject):
         self.win.close()
         if not atexit:
             exit()
+
 
     def thread_error(self, data):
         print("Thread Error: ", data)
@@ -649,13 +663,14 @@ class PyABR(QtCore.QObject):
                 )
                 starts += self.protocol["stimuli"]["delay"]
                 # print("tonepip ", frequency, dbspl)
+                dbref = 100.0
                 for i, db in enumerate(dbspl):
                     for j, fr in enumerate(frequency):
                         wave = sound.TonePip(
                             rate=self.sfout,
                             duration=self.protocol["stimuli"]["wave_duration"],
                             f0=fr,
-                            dbspl=db,
+                            dbspl=dbref,
                             pip_duration=self.protocol["stimuli"]["stimulus_duration"],
                             ramp_duration=self.protocol["stimuli"]["stimulus_risefall"],
                             pip_start=starts,
@@ -683,6 +698,7 @@ class PyABR(QtCore.QObject):
                 self.dblist = []
                 self.freqlist = []
                 n = 0
+                dbref = 100.
                 for j, dbspl in enumerate(dbs):
                     for i, frequency in enumerate(freqs):
                         wave_n = sound.TonePip(
@@ -726,6 +742,7 @@ class PyABR(QtCore.QObject):
                 wave_duration = s0 + len(dbs) * len(freqs) * dt + dt  # duration of the waveform
                 self.nwaves = self.protocol["stimuli"]["nreps"]
                 n = 0
+                dbref = 100.0
                 for i, frequency in enumerate(freqs):
                     for j, dbspl in enumerate(dbs):
 
@@ -775,6 +792,7 @@ class PyABR(QtCore.QObject):
                 np.random.shuffle(indices)  # in place.
                 self.dblist = dbfr[indices]
                 self.freqlist = frdb[indices]  # save the order so we can match the responses
+                dbref = 100.0
                 for n, isn in enumerate(indices):
                     wave_n = sound.TonePip(
                         rate=self.sfout,
@@ -823,12 +841,11 @@ class PyABR(QtCore.QObject):
         In test mode, we do not save the data....
 
         """
-
+        self.acq_mode = mode
         self.Dock_Recording.raiseDock()
         self.app.processEvents()
         self.PS.reset_hardware()
         self.protocol = self.PR.get_current_protocol()  # be sure we have current protocol data
-        self.threadpool.start(self.Presenter.run)  # start the thread.
         print("Starting test acquisition")
         self.TrialCounter = 0
         flist = self.protocol["stimuli"]["freqlist"]
@@ -841,6 +858,8 @@ class PyABR(QtCore.QObject):
             dbspl=self.protocol["stimuli"]["dblist"],
             frequency=flist,
         )
+        self.threadpool.start(self.Presenter.run)  # start the thread.
+        print("Starting test acquisition")
         self.stimulus_waveform.enableAutoRange()
         self.Dock_Recording.raiseDock()
         self.Dock_Recording.update()
@@ -850,7 +869,7 @@ class PyABR(QtCore.QObject):
         print("Starting acquisition?")
         self.Presenter.setWaveforms(self.wave_matrix, self.protocol, self.PS)
 
-    def update_ABR(self, chdata):
+    def update_ABR(self, chdata, wave_counter, repetition_counter):
         if chdata[0] is None:  # no data, so fake it
             rng = np.random.default_rng()
             chdata = [rng.standard_normal(self.PS.Ndata) * 1e-6, rng.standard_normal(self.PS.Ndata) * 1e-6]
@@ -871,7 +890,7 @@ class PyABR(QtCore.QObject):
         self.plot_ABR_Raw.plot(self.t_record, self.ch1_data, pen=pg.mkPen("c"))
         # self.plot_ABR_Raw.autoRange(True)
         self.plot_ABR_Raw.setXRange(0, np.max(self.t_record))
-
+        avedata = None
         self.plot_ABR_Average.clear()
         self.plot_ABR_Average.plot(
             self.t_record, self.summed_buffer / float(self.TrialCounter), pen=pg.mkPen("g")
@@ -879,7 +898,48 @@ class PyABR(QtCore.QObject):
         # self.plot_ABR_Raw.autoRange(True)
         self.plot_ABR_Raw.setXRange(0, np.max(self.t_record))
 
+        if self.acq_mode == "test":
+            return
+        # now save all the data.... 
+        subject_data = {}
+        children = self.ptreedata.children()
+        for child in children:
+            if child.name() == "Subject Data":
+                for childs in child:
+                    subject_data[childs.name()] = childs.value()
+        # now assemble data and save it
+        write_time = datetime.datetime.now()
+        out_data = {'subject_data': subject_data,
+                    'calibration': self.caldata,
+                    'stimuli': self.wave_matrix,
+                    'protocol': self.protocol,
+                    'wave_number': wave_counter,
+                    'repetition': repetition_counter,
+                    'data': self.ch1_data,
+                    'record_frequency': self.PS.trueFreq,
+                    'timestamp': write_time
+                    }
+        data_directory = Path(self.config["datapath"])
+        if not data_directory.is_dir():
+            Path.mkdir(data_directory, exist_ok=True)  # create if it does not exist.
+        if self.basefn is None:
+            self.basefn = write_time.strftime("%Y-%m-%d")
+        # print("base fn", self.basefn)
+        subject_data['Subject ID'] = "testing"
+        # print("data dir: ", data_directory)
+        # print("subject: ", subject_data['Subject ID'])
+        self.subject_dir = Path(self.config["datapath"], self.basefn, subject_data['Subject ID'])
+        print(str(self.subject_dir))
+        # Path.mkdir(self.subject_dir, exist_ok = True)
+        fn =  Path(f"abr_data/{self.basefn:s}_{self.protocol['protocol']['stimulustype']:s}_{wave_counter:03d}_{repetition_counter:03d}")
+        fn = str(fn)+".p"
+        print("output file: ", fn)
+        with open(fn, "wb") as fh:
+            pickle.dump(out_data, fh, protocol=pickle.HIGHEST_PROTOCOL)
+
+
     def stop(self):
+        self.PS.cleanup_NIDAQ()
         self.signal_stop.emit()
         self.TrialTimer.stop()
 
