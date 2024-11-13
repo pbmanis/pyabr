@@ -29,6 +29,7 @@ from src import pystim as pystim
 from src import sound as sound  # for waveform generation
 from src.build_parametertree import build_parametertree
 import src.read_calibration as read_calibration
+import src.read_abr as read_abr
 
 THREAD_PERIOD = 20  # thread period, in msec
 MAX_CLICK = 105.1  # SPL for maximum click 
@@ -429,6 +430,15 @@ class PyABR(QtCore.QObject):
         self.plt_map.getAxis("bottom").setLabel("F (kHz)")
         self.plt_map.getAxis("left").setLabel("dB (SPL)")
         self.Dock_Recording.addWidget(view)
+        
+        view2 = pg.GraphicsView()
+        l3 = pg.GraphicsLayout(border=(50, 50, 50))
+        view2.setCentralItem(l)
+        self.cal_plot = l3.addPlot()
+        self.Dock_Preview.addWidget(view2)
+        
+        
+        
         self.ptreedata.sigTreeStateChanged.connect(self.command_dispatcher)
         self.win.show()
 
@@ -459,7 +469,7 @@ class PyABR(QtCore.QObject):
                             self.continue_trials()
                         case "Save Visible":
                             self.save_visible()
-                        case "Load File":
+                        case "Load Data File":
                             self.load_file()
                         case "Read Cal File":
                             self.load_cal_file()

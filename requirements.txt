@@ -24,7 +24,8 @@ pyaudio  # this will have to be done manually
 # 
 pyqt6>=6.7
 pyqt6-sip>=13.8
-pyqtgraph>=0.13.6
+pyqtgraph>=0.13.7
 tdt
-pywin32
+# pywin32
 
+-e /Users/pbmanis/Desktop/Python/pylibrary

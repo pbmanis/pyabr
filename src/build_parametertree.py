@@ -104,7 +104,7 @@ def build_parametertree(known_protocols, current_protocol, stimuli:dict):
                 {"name": "Resume", "type": "action"},
                 {"name": "Stop", "type": "action"},
                 {"name": "Save Visible", "type": "action"},
-                {"name": "Load File", "type": "action"},
+                {"name": "Load Data File", "type": "action"},
                 {"name": "Read Cal File", "type": "action"},
             ],
         },

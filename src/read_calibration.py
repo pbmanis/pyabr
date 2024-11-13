@@ -3,8 +3,10 @@ from pathlib import Path
 import scipy.io
 from pyqtgraph import configfile
 import matplotlib.pyplot as mpl
+import pyqtgraph as pg
 #
 
+use_matplotlib = False
 
 """File structure is: 
 CAL.RefSPL = CALIBRATION.SPLCAL.maxtones;
@@ -52,23 +54,52 @@ def get_calibration_data(fn):
 
     return caldata
 
-def plot_calibration(caldata):
-    f, ax = mpl.subplots(1,1)
-    freqs = caldata['freqs']
-    ax.semilogx(freqs, caldata['maxdb'], 'ro-')
-    ax.semilogx(freqs, caldata['db_cs'], 'k--')
-    ax.semilogx(freqs, caldata['db_bp'], 'g--')
-    ax.semilogx(freqs, caldata['db_nf'], 'b-')
-    ax.set_xlabel ("F, Hz")
-    ax.set_ylabel("dB SPL")
-    fn = caldata['filename']
+def plot_calibration(caldata, plot_target = None):
     txt = f"Gain: {caldata['gain']:.1f}  Cal attn: {caldata['calattn']:.1f} dB, "
-    txt += f"Speaker: {caldata['spkr']:s}, Mic: {caldata['mic']:s}, date: {caldata['date']:s}\nFile: {str(fn):s}"
-    mpl.suptitle(txt, fontsize=7)
-    ax.grid(True, which="both")
-    f.tight_layout()
-    mpl.show()
+    txt += f"Speaker: {caldata['spkr']:s}, Mic: {caldata['mic']:s}, date: {caldata['date']:s}\nFile: {str(caldata['filename']):s}"
+    if use_matplotlib:
+        f, ax = mpl.subplots(1,1)
+        freqs = caldata['freqs']
+        ax.semilogx(freqs, caldata['maxdb'], 'ro-')
+        ax.semilogx(freqs, caldata['db_cs'], 'k--')
+        ax.semilogx(freqs, caldata['db_bp'], 'g--')
+        ax.semilogx(freqs, caldata['db_nf'], 'b-')
+        ax.set_xlabel ("F, Hz")
+        ax.set_ylabel("dB SPL")
+        fn = caldata['filename']
+        txt = f"Gain: {caldata['gain']:.1f}  Cal attn: {caldata['calattn']:.1f} dB, "
+        txt += f"Speaker: {caldata['spkr']:s}, Mic: {caldata['mic']:s}, date: {caldata['date']:s}\nFile: {str(fn):s}"
+        mpl.suptitle(txt, fontsize=7)
+        ax.grid(True, which="both")
+        f.tight_layout()
+        mpl.show()
+    else:
+        if plot_target is None:
+            app = pg.mkQApp("Calibration Data Plot")
+            win = pg.GraphicsLayoutWidget(show=True, title="ABR Data Plot")
+            win.resize(500, 500)
+            win.setWindowTitle(f"File: {caldata['filename']}")
 
+        
+            pl = win.addPlot(title=f"Calibration")
+        else:
+            pl = plot_target
+        freqs = caldata['freqs']
+        pl.setLogMode(x=True, y=False)
+        pl.plot(freqs, caldata['maxdb'], pen='r')
+        pl.plot(freqs, caldata['db_cs'], pen='w')
+        pl.plot(freqs, caldata['db_bp'], pen='g')
+        pl.plot(freqs, caldata['db_nf'], pen='b')
+        # pl.setLogMode(x=True, y=False)
+        pl.setLabel("bottom", "Frequency", units="Hz")
+        pl.setLabel("left", "dB SPL")
+        pl.showGrid(x=True, y=True)
+        text_label = pg.LabelItem(txt, size="8pt", color=(255, 255, 255))
+        text_label.setParentItem(pl)
+        text_label.anchor(itemPos=(0.5, 0.05), parentPos=(0.5, 0.05))
+
+        if plot_target is None:
+            pg.exec()
 if __name__ == "__main__":
     # get the latest calibration file:
     cfg = configfile.readConfigFile("config/abrs.cfg")
