@@ -11,7 +11,10 @@ class ProtocolReader():
         """
         Read the current protocol
         """
-        protocol = configfile.readConfigFile(Path("protocols", protocolname))
+        try:
+            protocol = configfile.readConfigFile(Path("protocols", protocolname))
+        except ValueError:
+            raise ValueError("ProtocolReader:read_protocol: Protocol file incorrectly read")
         # print("protocol: ", protocol)
         # if isinstance(protocol['stimuli']["dblist"], str):
         #     protocol['stimuli']["dblist"] = list(eval(str))

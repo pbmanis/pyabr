@@ -165,6 +165,10 @@ class PyStim:
 #            device_info={"devicename": devicename}
 #        )  # populate the self.State.hardware list
         self.TankName = []
+        self.ch1 = None   # inputs from a/d - 
+        self.ch2 = None
+        self.trueFreq = None  # actual input acquisiton sample frequency
+        self.audio = None  # pyaudio object
 
     def find_hardware(self):
         """
@@ -204,6 +208,22 @@ class PyStim:
                 self.State.hardware.append("RZ5D")
         print("Hardware found: ", self.State.hardware)
 
+    def reset_hardware(self):
+        """
+        Reset the hardware to initial state
+        """
+        # if "RZ5D" in self.State.hardware:
+        #     self.RZ5D.setModeStr("Idle")
+        if "PA5" in self.State.hardware:
+            self.PA5.SetAtten(120.0)
+        # if "RP21" in self.State.hardware:
+        #     self.RP21.Halt()
+        # if "NIDAQ" in self.State.hardware:
+        #     self.NIDAQ_task.close()
+        # if "pyaudio" in self.State.hardware:
+
+        #     self.audio.terminate()
+    
     def setup_soundcard(self):
         if self.State.debugFlag:
             print("pysounds.init: OS or available hardware only supports a standard sound card")
@@ -412,15 +432,23 @@ class PyStim:
             runmode = "Record"
         else:
             runmode = "Preview"
+
         # print("hardware: ", self.State.hardware)
         if "pyaudio" in self.State.hardware:
-            self.audio = pyaudio.PyAudio()
+            self.trueFreq = samplefreq
+            dur = len(wavel) / float(samplefreq)
+            self.Ndata = int(np.ceil((dur + postduration) * self.Stimulus.out_samplefreq))
+            if self.audio is None:
+                self.audio = pyaudio.PyAudio()
+            else:
+                self.audio.terminate()
+                self.audio = pyaudio.PyAudio()
             chunk = 1024
             FORMAT = pyaudio.paFloat32
             # CHANNELS = 2
             CHANNELS = 1
             if self.State.debugFlag:
-                print("pysounds.play_sound: samplefreq: %f" % (RATE))
+                print(f"pystim.play_sound: samplefreq: {self.Stimulus.out_samplefreq:.1f} Hz")
             self.stream = self.audio.open(
                 format=FORMAT,
                 channels=CHANNELS,
@@ -476,9 +504,9 @@ class PyStim:
             
             if "RP21" in self.State.hardware:
                 self.trueFreq = self.RP21.GetSFreq()
-                Ndata = np.ceil((dur + postduration) * self.trueFreq)
+                self.Ndata = int(np.ceil((dur + postduration) * self.trueFreq))
                 self.RP21.SetTagVal(
-                    "REC_Size", Ndata
+                    "REC_Size", self.Ndata
                 )  # old version using serbuf  -- with
                 # new version using SerialBuf, can't set data size - it is fixed.
                 # however, old version could not read the data size tag value, so
@@ -521,12 +549,12 @@ class PyStim:
             #         print(curindex1, curindex2)
             # self.NIDAQ_task.stop()
             if "RP21" in self.State.hardware:
-                self.ch2 = self.RP21.ReadTagV("Data_out2", 0, Ndata)
+                self.ch2 = self.RP21.ReadTagV("Data_out2", 0, self.Ndata)
                 # ch2 = ch2 - mean(ch2[1:int(Ndata/20)]) # baseline: first 5% of trace
-                self.ch1 = self.RP21.ReadTagV("Data_out1", 0, Ndata)
+                self.ch1 = self.RP21.ReadTagV("Data_out1", 0, self.Ndata)
                 self.RP21.Halt()
                 self.t_stim = np.arange(0, len(wavel)/self.Stimulus.out_sampleFreq, 1./self.Stimulus.out_sampleFreq )
-                self.t_record = np.arange(0, Ndata/self.trueFreq, 1/self.trueFreq )
+                self.t_record = np.arange(0, self.Ndata/self.trueFreq, 1/self.trueFreq )
                 # pg.plot(t_stim, wavel)
                 # pg.plot(t_record, self.ch1)
                 # if (sys.flags.interactive != 1) or not hasattr(pg.QtCore, "PYQT_VERSION"):

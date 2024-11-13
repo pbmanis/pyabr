@@ -48,6 +48,7 @@ def get_calibration_data(fn):
     caldata['spkr'] = d[10]
     caldata['mic'] = d[11]
     caldata['date'] = d[12]
+    caldata['filename'] = fn
 
     return caldata
 
@@ -60,6 +61,7 @@ def plot_calibration(caldata):
     ax.semilogx(freqs, caldata['db_nf'], 'b-')
     ax.set_xlabel ("F, Hz")
     ax.set_ylabel("dB SPL")
+    fn = caldata['filename']
     txt = f"Gain: {caldata['gain']:.1f}  Cal attn: {caldata['calattn']:.1f} dB, "
     txt += f"Speaker: {caldata['spkr']:s}, Mic: {caldata['mic']:s}, date: {caldata['date']:s}\nFile: {str(fn):s}"
     mpl.suptitle(txt, fontsize=7)

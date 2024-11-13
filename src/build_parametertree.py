@@ -94,6 +94,7 @@ def build_parametertree(known_protocols, current_protocol, stimuli:dict):
                 {"name": "Stop", "type": "action"},
                 {"name": "Save Visible", "type": "action"},
                 {"name": "Load File", "type": "action"},
+                {"name": "Read Cal File", "type": "action"},
             ],
         },
         {
@@ -108,12 +109,18 @@ def build_parametertree(known_protocols, current_protocol, stimuli:dict):
                     "value": 0.0,
                     "readonly": True,
                 },
-                {"name": "Trial",
+                {"name": "Wave #",
                     "type": "str",
                     "value": "0/0",
                     "readonly": True,
                     },
-                
+
+                {"name": "Rep #",
+                    "type": "str",
+                    "value": "0/0",
+                    "readonly": True,
+                    },
+
             ],
         },
         {
