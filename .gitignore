@@ -4,11 +4,11 @@
 
 
 # virtual envirionments
-pyabr_venv/*
+pyabr_venv/
 # ps_venv is an old version of the virtual environment
-ps_venv/*
+ps_venv/
 # data files
-abr_data/*
+abr_data/
 
 ### macOS ###
 # General
