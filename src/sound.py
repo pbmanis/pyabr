@@ -6,6 +6,9 @@ import numpy as np
 import scipy
 import scipy.io.wavfile
 import resampy
+import message_box
+
+MBox = message_box.MessageBox
 
 def create(type, **kwds):
     """ Create a Sound instance using a key returned by Sound.key().
@@ -149,6 +152,10 @@ class TonePip(Sound):
         if kwds['pip_duration'] < kwds['ramp_duration'] * 2:
             raise ValueError("pip_duration must be greater than (2 * ramp_duration).")
         if kwds['f0'] > kwds['rate'] * 0.5:
+            MBox(title='Tone pip sound generation Error', 
+                 message=(f'Frequency must be less than (0.5 * rate) per Nyquist.'
+                          + f'\nGot: F={kwds["f0"]}, rate={kwds["rate"]}'
+                          + f'\nNyquist is {0.5*kwds["rate"]}'))
             raise ValueError("f0 must be less than (0.5 * rate).")
         if 'alternate' not in list(kwds.keys()):  # optional, default false
             kwds['alternate'] = False

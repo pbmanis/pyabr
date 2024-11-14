@@ -112,6 +112,7 @@ def build_parametertree(known_protocols, current_protocol, stimuli:dict):
             "name": "Status",
             "type": "group",
             "children": [
+                {"name": "Devices", "type": "str", "value": "None", "readonly": True},
                 {"name": "Mode", "type": "str", "value":"Ready", "readonly": True},
                 {"name": "dBSPL", "type": "float", "value": 0.0, "readonly": True},
                 {
