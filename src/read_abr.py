@@ -42,7 +42,7 @@ def average_within_traces(fd, i, protocol, date):
     delay = protocol["stimuli"]["delay"]
     dur = 0.010
     for n in range(nreps):  # loop over the repetitions for this specific stimulus
-        fn = f"{date}_{stim_type}_{i:03d}_{n+1:03d}.p"
+        fn = f"{date}_{name}_{i:03d}_{n+1:03d}.p"
         d = read_abr_file(Path(fd, fn))
         if n == 0:
             data = d["data"]
@@ -255,7 +255,7 @@ def read_and_average_abr_files(fn):
                     pl.setLabel('left', "Amplitude", units='mV')
                 if i == 0:
                     pl.setLabel('bottom', "Time", units='s')
-                pl.setYRange(-50, 50)
+                # pl.setYRange(-50, 50)
                 plid.append(pl)
             win.nextRow()
 
@@ -265,13 +265,16 @@ def read_and_average_abr_files(fn):
 pg.setConfigOptions(antialias=True)
 
 if __name__ == "__main__":
-    fn = "abr_data/clicks/2024-11-13_click_000_001.p"
+    fn = "abr_data/2024-11-15/clicks"
+    files = list(Path(fn).glob('*.p'))
+    print(str(files[0]))
+    print(files[0].is_file())
     # fn = "abr_data/tones-30-50-70/2024-11-13_tonepip_000_001.p"
-    #fn = "abr_data/interleaved_plateau/2024-11-15_interleaved_plateau_000_001.p"
-    fn = "abr_data/2024-11-15/tonepip/2024-11-15_tonepip_000_001.p"
-    d = read_abr_file(fn)
+    # fn = "abr_data/2024-11-15/interleaved_plateau/2024-11-15_interleaved_plateau_000_001.p"
+    #fn = "abr_data/2024-11-15/tonepip/2024-11-15_tonepip_000_001.p"
+    d = read_abr_file(str(files[0]))
     # mpl.plot(d['data'])
     # mpl.show()
     # print(d['calibration'])
     print(d["stimuli"].keys())
-    read_and_average_abr_files(fn)
+    read_and_average_abr_files(str(files[0]))
