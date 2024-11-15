@@ -123,7 +123,7 @@ def average_across_traces(fd, i, protocol, date):
     trdur = len(data) / fsamp
     newrate = 1e5
     tb100 = np.arange(0, trdur, 1.0 / newrate)
-    abr = np.interp(tb100, tb, data) * 1e3
+    abr = np.interp(tb100, tb, data)
     it0 = int(protocol["stimuli"]["delay"]*newrate)
 
     abr = abr[it0:]
@@ -157,6 +157,7 @@ def average_across_traces(fd, i, protocol, date):
 
 def read_and_average_abr_files(fn):
     d = read_abr_file(fn)
+    amplifier_gain = 1e4
     # print(d["protocol"])
     stim_type = d["protocol"]["protocol"]["stimulustype"]
     fd = Path(fn).parent
@@ -182,7 +183,7 @@ def read_and_average_abr_files(fn):
     # print(file_parts)
     date = file_parts[0]
     stim_type = file_parts[1]
-    print("Stim type: ", stim_type)
+  
     if len(frlist) == 0:
         frlist = [1]
     if stim_type in ["click", "tonepip"]:
@@ -233,7 +234,7 @@ def read_and_average_abr_files(fn):
                 PH.referenceline(ax, linewidth=0.5)
                 n += 1
                 
-        mpl.tight_layout()
+        # mpl.tight_layout()
         mpl.show()
     else: # use pyqtgraph
         app = pg.mkQApp("ABR Data Plot")
@@ -243,21 +244,49 @@ def read_and_average_abr_files(fn):
         plid = []
         if len(frlist) == 0:
             frlist = [1]
-        for i, db in enumerate(dblist):
-            for j, fr in enumerate(frlist):
-                pl = win.addPlot(title=f"{db} dB, {fr} Hz")
-                if stim_type in ["click", "tonepip"]:
-                    pl.plot(tb*1e3, abrd[i, j], pen=pg.mkPen(j, len(dblist), width=2), clipToView=True)
-                else:
-                    pl.plot(tb*1e3, abrd[len(dblist)-i-1, j], pen=pg.mkPen(j, len(dblist), width=2),  clipToView=True)
-                # pl.showGrid(x=True, y=True)
-                if j == 0:
-                    pl.setLabel('left', "Amplitude", units='mV')
+        col = 0
+        print("stim_type: ", stim_type)
+        if stim_type not in ["clicks", "click"]:
+            for i, db in enumerate(dblist):
+                row = i # int(i/5)
+                for j, fr in enumerate(frlist):
+                    col=j
+                    pl = win.addPlot(title=f"{db} dB, {fr} Hz", col=col, row= row) # i % 5)
+                    if stim_type in ["click", "tonepip"]:
+                        pl.plot(tb*1e3, abrd[i, j]/amplifier_gain, pen=pg.mkPen(j, len(dblist), width=2), clipToView=True)
+                    else:
+                        pl.plot(tb*1e3, abrd[len(dblist)-i-1, j]/amplifier_gain, pen=pg.mkPen(j, len(dblist), width=2),  clipToView=True)
+                    # pl.showGrid(x=True, y=True)
+                    if j == 0:
+                        pl.setLabel('left', "Amplitude", units='mV')
+                    if i == 0:
+                        pl.setLabel('bottom', "Time", units='s')
+                    pl.setYRange(-2e-6, 2e-6)
+
+
+        else:
+            v0 = 0
+            v=[]
+            for i, db in enumerate(dblist):
                 if i == 0:
-                    pl.setLabel('bottom', "Time", units='s')
-                # pl.setYRange(-50, 50)
+                    pl = win.addPlot(title=f"{db} dB, {fr} Hz") # i % 5)
+                pl.plot(tb*1e3, -v0 + abrd[i, j]/amplifier_gain, pen=pg.mkPen(pg.intColor(i, hues=len(dblist)), width=2), clipToView=True)
+                v0 += 1e-6*amplifier_gain
+                v.append(v0)
+                # pl.showGrid(x=True, y=True)
+                pl.setLabel('left', "Amplitude", units='mV')
+                pl.setLabel('bottom', "Time", units='s')
+                label = pg.LabelItem(f"{db:.1f}", size="11pt", color="#99aadd")
+                label.setParentItem(pl)
+                label.anchor(itemPos=(0.05, -v0*180), parentPos=(0.1 , 0))
+                # pl.setYRange(-2e-6, 2e-6)
                 plid.append(pl)
-            win.nextRow()
+            for i, db in enumerate(dblist):
+                label = pg.LabelItem(f"{db:.1f}", size="11pt", color="#99aadd")
+                label.setParentItem(pl)
+                label.anchor(itemPos=(0.05, -v[i]*200), parentPos=(0.1 , 0))
+                # win.nextRow()
+        print("# plots: ", len(plid))
 
         pg.exec()
 
@@ -265,7 +294,8 @@ def read_and_average_abr_files(fn):
 pg.setConfigOptions(antialias=True)
 
 if __name__ == "__main__":
-    fn = "abr_data/2024-11-15/clicks"
+    fn = "abr_data/2024-11-15-A/interleaved_plateau"
+    # fn = "abr_data/2024-11-15-A/clicks"
     files = list(Path(fn).glob('*.p'))
     print(str(files[0]))
     print(files[0].is_file())
@@ -276,5 +306,5 @@ if __name__ == "__main__":
     # mpl.plot(d['data'])
     # mpl.show()
     # print(d['calibration'])
-    print(d["stimuli"].keys())
+    # print(d["stimuli"].keys())
     read_and_average_abr_files(str(files[0]))
