@@ -42,7 +42,7 @@ def average_within_traces(fd, i, protocol, date):
     delay = protocol["stimuli"]["delay"]
     dur = 0.010
     for n in range(nreps):  # loop over the repetitions for this specific stimulus
-        fn = f"{date}_{name}_{i:03d}_{n+1:03d}.p"
+        fn = f"{date}_{stim_type}_{i:03d}_{n+1:03d}.p"
         d = read_abr_file(Path(fd, fn))
         if n == 0:
             data = d["data"]
@@ -265,9 +265,10 @@ def read_and_average_abr_files(fn):
 pg.setConfigOptions(antialias=True)
 
 if __name__ == "__main__":
-    fn = "abr_data/click/2024-11-13_click_000_001.p"
-    fn = "abr_data/tones-30-50-70/2024-11-13_tonepip_000_001.p"
-    # fn = "abr_data/interleaved_plateau/2024-11-13_interleaved_plateau_000_001.p"
+    fn = "abr_data/clicks/2024-11-13_click_000_001.p"
+    # fn = "abr_data/tones-30-50-70/2024-11-13_tonepip_000_001.p"
+    #fn = "abr_data/interleaved_plateau/2024-11-15_interleaved_plateau_000_001.p"
+    fn = "abr_data/2024-11-15/tonepip/2024-11-15_tonepip_000_001.p"
     d = read_abr_file(fn)
     # mpl.plot(d['data'])
     # mpl.show()

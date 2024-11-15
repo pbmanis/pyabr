@@ -9,6 +9,7 @@ and sound.py for stimulus generation.
 
 import atexit
 import datetime
+import copy
 import pickle
 import pprint
 import sys
@@ -723,9 +724,12 @@ class PyABR(QtCore.QObject):
                     subject_data[childs.name()] = childs.value()
         # now assemble data and save it
         write_time = datetime.datetime.now()
-        wave_copy = self.wave_matrix.copy()
+        # print(dir(self.wave_matrix))
+        wave_copy = copy.deepcopy(self.wave_matrix)
         for k in wave_copy.keys():
-            wave_copy[k].sound = {}
+            # print(k, dir(wave_copy[k]))
+            # print(wave_copy[k].keys())
+            wave_copy[k]["sound"] = {}
         out_data = {
             "subject_data": subject_data,
             "calibration": self.caldata,
@@ -755,6 +759,7 @@ class PyABR(QtCore.QObject):
         print("output file: ", fn)
         with open(fn, "wb") as fh:
             pickle.dump(out_data, fh, protocol=pickle.HIGHEST_PROTOCOL)
+        del wave_copy    # delete the wave copy
 
     def stop(self):
         """stop:  Stop stimulus presentation dead. 

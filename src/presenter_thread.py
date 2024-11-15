@@ -133,11 +133,11 @@ class Presenter(QObject):  # (QtCore.QRunnable):
         Each repetition is returned via a signal to the main program.
 
         """
-        print(
-            f"next stim, wave count: {self.wave_counter:d}/{self.n_waves} "
-            + f"repetition count: {self.repetition_counter:d}/{self.n_repetitions:d}"
-        )
-        print("    self._running: ", self._running)
+        # print(
+        #     f"next stim, wave count: {self.wave_counter:d}/{self.n_waves} "
+        #     + f"repetition count: {self.repetition_counter:d}/{self.n_repetitions:d}"
+        # )
+        # print("    self._running: ", self._running)
         if not self._running or self.wavetype is None or not self._waveloaded:
             print("Presentation runner is missing something")
             return None, None
@@ -174,7 +174,7 @@ class Presenter(QObject):  # (QtCore.QRunnable):
         if self.wavetype in ["click", "tonepip"]:
             wave = self.wave_matrix[self.wavekeys[self.wave_counter]]["sound"]
             sfout = self.wave_matrix[self.wavekeys[self.wave_counter]]["rate"]
-            print("presenter: sfout: ", sfout)
+            # print("presenter: sfout: ", sfout)
             if self.wave_counter >= self.n_waves:
                 self.retrieve_data()
                 self.signal_finished.emit()
