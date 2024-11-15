@@ -6,7 +6,7 @@ import numpy as np
 import scipy
 import scipy.io.wavfile
 import resampy
-import message_box
+import src.message_box as message_box
 
 MBox = message_box.MessageBox
 

@@ -174,6 +174,7 @@ class Presenter(QObject):  # (QtCore.QRunnable):
         if self.wavetype in ["click", "tonepip"]:
             wave = self.wave_matrix[self.wavekeys[self.wave_counter]]["sound"]
             sfout = self.wave_matrix[self.wavekeys[self.wave_counter]]["rate"]
+            print("presenter: sfout: ", sfout)
             if self.wave_counter >= self.n_waves:
                 self.retrieve_data()
                 self.signal_finished.emit()

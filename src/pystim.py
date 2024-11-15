@@ -152,7 +152,7 @@ class Stimulus_Parameters:
     and populate with some default values
     """
 
-    out_sampleFreq: float = 44100.0
+    out_sampleFreq: float = 500000
     in_sampleFreq: float = 44100.0
     atten_left: float = 30.0
     atten_right: float = 120.0
@@ -268,7 +268,7 @@ class PyStim:
         # get the drivers and the activeX control (win32com)
         self.NIDevice = nidaqmx.system.System.local()
         self.NIDevicename = self.NIDevice.devices.device_names
-        self.Stimulus.out_sampleFreq = 200000  # output frequency, in Hz
+        self.Stimulus.out_sampleFreq = 500000  # output frequency, in Hz
         return True
 
     def show_nidaq(self):
@@ -315,17 +315,20 @@ class PyStim:
         rcofile : str (default : '')
             The RCO file to connect to. Must be the full path.
         """
-        if self.State.debugFlat:
+        if self.State.debugFlag:
             print("Setting up RP21")
         self.RP21_rcofile = rcofile
         if not Path(self.RP21_rcofile).is_file():
             raise FileNotFoundError(f"The required RP2.1 RCO file was not found \n    (Looking for {self.RP21_rcofile})")
         self.RP21 = win32com.client.Dispatch("RPco.x")  # connect to RP2.1
+        # print(self.RP21)
+        # print(dir(self.RP21))
         # try to make the connection
         a = self.RP21.ConnectRP2("USB", 0)
         if a > 0:
             print(f"pystim.setup_RP21: RP2.1 connected, status: {a:d}")
         else:
+            print("connect status: ", a)
             raise IOError(f"pystim.setup_RP21: RP2.1 requested in hardware, but connection failed with status: {a:d}")
         self.RP21.ClearCOF()
         self.samp_cof_flag = 4  # 2 is for 24.4 kHz
@@ -516,10 +519,10 @@ class PyStim:
             self.NIDAQ_task.ao_channels.add_ao_voltage_chan(
                 f"{dev}/ao0", min_val=-10.0, max_val=10.0
             )
-            clock = self.Stimulus.out_sampleFreq
             ndata = len(wavel)
+            print("NIDAQ clock: ", samplefreq)
             self.NIDAQ_task.timing.cfg_samp_clk_timing(
-                clock,
+                rate=samplefreq,
                 source="",
                 active_edge=Edge.RISING,
                 sample_mode=AcquisitionType.FINITE,
@@ -564,8 +567,9 @@ class PyStim:
                     # self.NIDAQ_task.stop()
                     # return
             self.cleanup_NIDAQ()
-            # self.NIDAQ_task.stop()  # done, so stop the output.
-            # self.NIDAQ_task.close()
+            if self.NIDAQ_task is not None:
+                self.NIDAQ_task.stop()  # done, so stop the output.
+                self.NIDAQ_task.close()
             if "PA5" in self.State.hardware:
                 self.setAttens()  # attenuators down (there is noise otherwise)
             # read the data...
@@ -590,7 +594,7 @@ class PyStim:
                 self.ch1 = self.RP21.ReadTagV("Data_out1", 0, self.Ndata)
                 self.RP21.Halt()
                 self.t_stim = np.arange(
-                    0, len(wavel) / self.Stimulus.out_sampleFreq, 1.0 / self.Stimulus.out_sampleFreq
+                    0, len(wavel) / samplefreq, 1.0 / samplefreq
                 )
                 self.t_record = np.arange(0, self.Ndata / self.trueFreq, 1 / self.trueFreq)
                 # pg.plot(t_stim, wavel)
@@ -740,7 +744,7 @@ class PyStim:
         self.State.NI_task.register_done_event(self.re_arm_NIDAQ)
 
         self.State.NI_task.timing.cfg_samp_clk_timing(
-            self.Stimulus.out_sampleFreq,
+            rate = 500000, # self.Stimulus.out_sampleFreq,
             source="",
             sample_mode=AcquisitionType.FINITE,
             samps_per_chan=len(self.waveout),

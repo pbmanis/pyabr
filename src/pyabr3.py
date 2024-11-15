@@ -60,7 +60,7 @@ class PyABR(QtCore.QObject):
         )
         # check hardware
         self.hardware, self.sfin, self.sfout = self.PS.getHardware()
-
+        self.sfout = self.config["NI_samplerate"]
         self.calfile = Path(self.config["calfile"])  # get calibration file
         self.caldata = read_calibration.get_calibration_data(self.calfile)
         now = datetime.datetime.now()
@@ -474,6 +474,7 @@ class PyABR(QtCore.QObject):
                         )
                         # print("tonepip generate: ", db, fr)
                         wave.generate()
+                        print("self.sfout: ", self.sfout)
                         self.wave_matrix[("tonepip", db, fr)] = {
                             "sound": wave.sound,
                             "rate": self.sfout,
@@ -722,10 +723,13 @@ class PyABR(QtCore.QObject):
                     subject_data[childs.name()] = childs.value()
         # now assemble data and save it
         write_time = datetime.datetime.now()
+        wave_copy = self.wave_matrix.copy()
+        for k in wave_copy.keys():
+            wave_copy[k].sound = {}
         out_data = {
             "subject_data": subject_data,
             "calibration": self.caldata,
-            "stimuli": self.wave_matrix,
+            "stimuli": wave_copy,
             "protocol": self.protocol,
             "wave_number": wave_counter,
             "repetition": repetition_counter,

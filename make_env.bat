@@ -24,6 +24,6 @@ pip3 install pyaudio==0.2.14
 python setup.py develop
 
 Rem Should always run test afterwards.
-python tests/play_test_sounds.py
+python tests/play_test_sounds.py pip
 
 pause

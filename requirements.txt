@@ -1,5 +1,6 @@
 # pysounds requirements
 
+
 # development utilities and general tools
 black>=24.8
 Pint>=0.24
@@ -11,6 +12,7 @@ toml
 # Specific requirements
 nidaqmx
 matplotlib>=3.9
+seaborn
 nose==1.3.7
 numpy>1.19.5
 psutil>=6.1.0
@@ -28,4 +30,5 @@ pyqtgraph>=0.13.7
 tdt
 # pywin32
 
--e /Users/pbmanis/Desktop/Python/pylibrary
+# -e git://github.com/pbmanis/pylibrary.git#egg=pylibrary
+-e C:/Users/experimenters/Desktop/Python/pylibrary
