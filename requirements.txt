@@ -31,4 +31,5 @@ tdt
 # pywin32
 
 # -e git://github.com/pbmanis/pylibrary.git#egg=pylibrary
--e C:/Users/experimenters/Desktop/Python/pylibrary
+# -e C:/Users/experimenters/Desktop/Python/pylibrary
+-e /Users/pbmanis/Desktop/Python/pylibrary
