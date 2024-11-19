@@ -34,6 +34,7 @@ maxdB refers to max sound pressure level at 0 dB attenuation.
 def get_calibration_data(fn):
 
     dm = scipy.io.loadmat(fn, appendmat=False,  squeeze_me=True)
+    print(fn)
     d = dm["CAL"].item()
     caldata = {}
     caldata['refspl'] = d[0]
@@ -85,11 +86,12 @@ def plot_calibration(caldata, plot_target = None):
         else:
             pl = plot_target
         freqs = caldata['freqs']
+        pl.addLegend()
         pl.setLogMode(x=True, y=False)
-        pl.plot(freqs, caldata['maxdb'], pen='r')
-        pl.plot(freqs, caldata['db_cs'], pen='w')
-        pl.plot(freqs, caldata['db_bp'], pen='g')
-        pl.plot(freqs, caldata['db_nf'], pen='b')
+        pl.plot(freqs, caldata['maxdb'], pen='r', name="Max SPL (0 dB Attn)")
+        pl.plot(freqs, caldata['db_cs'], pen='w', name=f"Measured dB SPL, attn={caldata['calattn']:.1f} cosinor")
+        pl.plot(freqs, caldata['db_bp'], pen='g', name=f"Measured dB SPL, attn={caldata['calattn']:.1f}, bandpass")
+        pl.plot(freqs, caldata['db_nf'], pen='b', name="Noise Floor")
         # pl.setLogMode(x=True, y=False)
         pl.setLabel("bottom", "Frequency", units="Hz")
         pl.setLabel("left", "dB SPL")
