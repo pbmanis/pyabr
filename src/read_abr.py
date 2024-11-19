@@ -294,8 +294,8 @@ def read_and_average_abr_files(fn):
 pg.setConfigOptions(antialias=True)
 
 if __name__ == "__main__":
-    fn = "abr_data/2024-11-15-A/interleaved_plateau"
-    # fn = "abr_data/2024-11-15-A/clicks"
+     fn = "abr_data/2024-11-15-C/interleaved_plateau"
+    # fn = "abr_data/2024-11-15-C/clicks"
     files = list(Path(fn).glob('*.p'))
     print(str(files[0]))
     print(files[0].is_file())
