@@ -283,27 +283,27 @@ class AnalyzeABR:
         delay = protocol["stimuli"]["delay"]
         dur = 0.010
 
-        file_parts = Path(fn).stem.split("_")
-        # print(file_parts)
-        date = file_parts[0]
-        stim_type = file_parts[1]
-        print("Stim type: ", stim_type)
-        if len(frlist) == 0:
-            frlist = [1]
-        if stim_type in ["click", "tonepip"]:
-            n = 0
-            for i, db in enumerate(dblist):
-                for j, fr in enumerate(frlist):
-                    x, tb = self.average_within_traces(
-                        fd,
-                        n,
-                        protocol,
-                        date,
-                    )
-                    if i == 0 and j == 0:
-                        abrd = np.zeros((len(dblist), len(frlist), len(x)))
-                    abrd[i, j] = x
-                    n += 1
+    file_parts = Path(fn).stem.split("_")
+    # print(file_parts)
+    date = file_parts[0]
+    stim_type = file_parts[1]
+  
+    if len(frlist) == 0:
+        frlist = [1]
+    if stim_type in ["click", "tonepip"]:
+        n = 0
+        for i, db in enumerate(dblist):
+            for j, fr in enumerate(frlist):
+                x, tb = average_within_traces(
+                    fd,
+                    n,
+                    protocol,
+                    date,
+                )
+                if i == 0 and j == 0:
+                    abrd = np.zeros((len(dblist), len(frlist), len(x)))
+                abrd[i, j] = x
+                n += 1
 
         if stim_type in ["interleaved"]:
             n = 0
@@ -332,6 +332,71 @@ class AnalyzeABR:
                         ax.plot(tb * 1e3, abrd[len(dblist) - i - 1, j], clip_on=False)
                     if i == len(dblist) - 1:
 
+                    ax.set_title(f"{db} dB, {fr} Hz")
+                if i == 0:
+                    ax.set_xlabel("Time (s)")
+                if j == 0:
+                    ax.set_ylabel("Amplitude")
+                ax.set_ylim(-50, 50)
+                PH.noaxes(ax)
+                if i == 0 and j == 0:
+                    PH.calbar(ax, calbar=[0, -20, 2, 10], scale=[1.0, 1.0], xyoffset=[0.05, 0.1],)
+                PH.referenceline(ax, linewidth=0.5)
+                n += 1
+                
+        # mpl.tight_layout()
+        mpl.show()
+    else: # use pyqtgraph
+        app = pg.mkQApp("ABR Data Plot")
+        win = pg.GraphicsLayoutWidget(show=True, title="ABR Data Plot")
+        win.resize(1000,1000)
+        win.setWindowTitle(f"File: {str(Path(fn).parent)}")
+        plid = []
+        if len(frlist) == 0:
+            frlist = [1]
+        col = 0
+        print("stim_type: ", stim_type)
+        if stim_type not in ["clicks", "click"]:
+            for i, db in enumerate(dblist):
+                row = i # int(i/5)
+                for j, fr in enumerate(frlist):
+                    col=j
+                    pl = win.addPlot(title=f"{db} dB, {fr} Hz", col=col, row= row) # i % 5)
+                    if stim_type in ["click", "tonepip"]:
+                        pl.plot(tb*1e3, abrd[i, j]/amplifier_gain, pen=pg.mkPen(j, len(dblist), width=2), clipToView=True)
+                    else:
+                        pl.plot(tb*1e3, abrd[len(dblist)-i-1, j]/amplifier_gain, pen=pg.mkPen(j, len(dblist), width=2),  clipToView=True)
+                    # pl.showGrid(x=True, y=True)
+                    if j == 0:
+                        pl.setLabel('left', "Amplitude", units='mV')
+                    if i == 0:
+                        pl.setLabel('bottom', "Time", units='s')
+                    pl.setYRange(-2e-6, 2e-6)
+
+
+        else:
+            v0 = 0
+            v=[]
+            for i, db in enumerate(dblist):
+                if i == 0:
+                    pl = win.addPlot(title=f"{db} dB, {fr} Hz") # i % 5)
+                pl.plot(tb*1e3, -v0 + abrd[i, j]/amplifier_gain, pen=pg.mkPen(pg.intColor(i, hues=len(dblist)), width=2), clipToView=True)
+                v0 += 1e-6*amplifier_gain
+                v.append(v0)
+                # pl.showGrid(x=True, y=True)
+                pl.setLabel('left', "Amplitude", units='mV')
+                pl.setLabel('bottom', "Time", units='s')
+                label = pg.LabelItem(f"{db:.1f}", size="11pt", color="#99aadd")
+                label.setParentItem(pl)
+                label.anchor(itemPos=(0.05, -v0*180), parentPos=(0.1 , 0))
+                # pl.setYRange(-2e-6, 2e-6)
+                plid.append(pl)
+            for i, db in enumerate(dblist):
+                label = pg.LabelItem(f"{db:.1f}", size="11pt", color="#99aadd")
+                label.setParentItem(pl)
+                label.anchor(itemPos=(0.05, -v[i]*200), parentPos=(0.1 , 0))
+                # win.nextRow()
+        print("# plots: ", len(plid))
                         ax.set_title(f"{self.convert_attn_to_db(db, fr)} dBSPL, {fr} Hz")
                     if i == 0:
                         ax.set_xlabel("Time (s)")

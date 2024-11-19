@@ -103,8 +103,19 @@ def plot_calibration(caldata, plot_target = None):
         if plot_target is None:
             pg.exec()
 if __name__ == "__main__":
+    import sys
+    configtype = "lab"
+    cmd = sys.argv[1:]
+    print("cmd: ", cmd)
+
+    if cmd == "test":
+        configfilename = "config/abrs_test.cfg"
+    else:
+        configtype = "lab"
+        configfilename = "config/abrs.cfg"
+    assert configtype in ["test", "lab"]
     # get the latest calibration file:
-    cfg = configfile.readConfigFile("config/abrs.cfg")
+    cfg = configfile.readConfigFile(configfilename)
     print(cfg)
     fn = Path(cfg['calfile'])
     # fn = Path("E:/Users/Experimenters/Desktop/ABR_Code/frequency_MF1.cal")

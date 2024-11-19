@@ -50,18 +50,22 @@ class PyABR(QtCore.QObject):
     signal_stop = pyqtSignal()
     signal_quit = pyqtSignal()
 
-    def __init__(self):
+    def __init__(self, configtype: str = "test"):
+        assert configtype in ["test", "lab"]
+        if configtype == "test":
+            configfilename = "config/abrs_test.cfg"
+        else:
+            configfilename = "config/abrs.cfg"
         self.QColor = QtGui.QColor
         atexit.register(self.quit)
         # get the configuration file:
-        self.config = configfile.readConfigFile("config/abrs.cfg")
+        self.config = configfile.readConfigFile(configfilename)
         self.PS = pystim.PyStim(
             required_hardware=self.config["required_hardware"],
             ni_devicename=self.config["NI_device"],
         )
         # check hardware
         self.hardware, self.sfin, self.sfout = self.PS.getHardware()
-        self.sfout = self.config["NI_samplerate"]
         self.calfile = Path(self.config["calfile"])  # get calibration file
         self.caldata = read_calibration.get_calibration_data(self.calfile)
         now = datetime.datetime.now()
@@ -71,6 +75,7 @@ class PyABR(QtCore.QObject):
         self.ptreedata = None  # pyqtgraph parametertree  - set to None until the tree is built
         self.protocol = None
         self.debugFlag = True
+        self.link_traces = False
         self.read_protocol_directory()
         self.acq_mode = "test"
         self.basefn = None  # base file path/name for saving data
@@ -185,7 +190,8 @@ class PyABR(QtCore.QObject):
 
         layout.nextRow()  # averaged abr trace
         self.plot_ABR_Average = layout.addPlot()  #
-        # self.plot_ABR_Average.setXLink(self.plot_ABR_Raw)
+        if self.link_traces:
+            self.plot_ABR_Average.setXLink(self.plot_ABR_Raw)
         self.plot_ABR_Average.setTitle("Average ABR Signal", color="#ff0000")
         self.plot_ABR_Average.getAxis("left").setLabel("uV", color="#0000ff")
         # self.plot_ABR_Average.setYRange(-10, 10.0)
@@ -193,7 +199,8 @@ class PyABR(QtCore.QObject):
 
         layout.nextRow()  # waveforms
         self.stimulus_waveform = layout.addPlot()  #
-        # self.stimulus_waveform.setXLink(self.plot_ABR_Raw)
+        if self.link_traces:
+            self.stimulus_waveform.setXLink(self.plot_ABR_Raw)
         self.stimulus_waveform.setTitle("Waveform", color="#ff0000")
         self.stimulus_waveform.getAxis("left").setLabel("V", color="#0000ff")
         # self.stimulus_waveform.setYRange(-10, 10.0)
@@ -700,9 +707,10 @@ class PyABR(QtCore.QObject):
             self.plot_ABR_Average.clear()
         self.TrialCounter = self.TrialCounter + 1
         # self.t_stim = np.arange(0, len(self.ch1_data)/self.PS.Stimulus.out_sampleFreq, 1./self.PS.Stimulus.out_sampleFreq )
-
-        self.t_record = np.arange(0, len(self.ch1_data) / self.PS.trueFreq, 1 / self.PS.trueFreq)
+        _, self.sfin, self.sfout = self.PS.getHardware()
+        self.t_record = np.arange(0, len(self.ch1_data) / self.sfin, 1.0 / self.sfin)
         self.plot_ABR_Raw.clear()
+        print(self.t_record.shape, self.ch1_data.shape)
         self.plot_ABR_Raw.plot(self.t_record, self.ch1_data, pen=pg.mkPen("c"))
         # self.plot_ABR_Raw.autoRange(True)
         self.plot_ABR_Raw.setXRange(0, np.max(self.t_record))
@@ -793,6 +801,10 @@ class PyABR(QtCore.QObject):
 
 
 if __name__ == "__main__":
-    prog = PyABR()
+    import sys
+    cmd = sys.argv[1:]
+    print("cmd: ", cmd)
+
+    prog = PyABR(cmd[0])
     if (sys.flags.interactive != 1) or not hasattr(pg.QtCore, "PYQT_VERSION"):
         QtWidgets.QApplication.instance().exec()
