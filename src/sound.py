@@ -1042,8 +1042,9 @@ def piptone(t, rt, Fs, F0, dBSPL, pip_dur, pip_start, alternate=False):
     # make pip template
     pip_pts = int(pip_dur * Fs) + 1
     pip_t = np.linspace(0, pip_dur, pip_pts)
-    pip = np.sqrt(2) * dbspl_to_pa(dBSPL) * np.sin(2*np.pi*F0*pip_t)  # unramped stimulus
+    # pip = np.sqrt(2) * dbspl_to_pa(dBSPL) * np.sin(2*np.pi*F0*pip_t)  # unramped stimulus
 
+    pip = dbspl_to_pa(dBSPL) * np.sin(2*np.pi*F0*pip_t)  # unramped stimulus
     # add ramp
     ramp_pts = int(rt * Fs) + 1
     ramp = np.sin(np.linspace(0, np.pi/2., ramp_pts))**2
