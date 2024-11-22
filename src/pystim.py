@@ -71,7 +71,7 @@ New:
 
 import ctypes
 from dataclasses import dataclass, field
-
+from pyqtgraph.Qt.QtCore import QMutex
 from pathlib import Path
 import platform
 import struct
@@ -124,7 +124,9 @@ RZ5D_Run = 3
 
 def_soundcard_outputrate = 44100
 def_soundcard_inrate = 44100
-def_NI_outputrate = 500000
+def_NI_outputrate = 1000000
+
+
 
 
 # define empty list function for dataclasses
@@ -144,7 +146,7 @@ class Stimulus_Status:
     index: int = 0
     debugFlag: bool = False
     NI_devicename: str = ""
-    NI_task: object = None
+    NIDAQ_task: object = None
     required_hardware: list = field(default_factory=defemptylist)
     hardware: list = field(default_factory=defemptylist)
     max_repetitions: int = 10
@@ -158,7 +160,7 @@ class Stimulus_Parameters:
     setup should have instantiated them at their correct values.
     """
 
-    NI_out_sampleFreq: float = 0.0
+    NI_out_sampleFreq: float = 500000
     RP21_out_sampleFreq: float = 0.0
     RP21_in_sampleFreq: float = 0.0
     soundcard_out_sampleFreq: float = def_soundcard_outputrate
@@ -171,7 +173,8 @@ class PyStim:
     """ PyStim class: a class to control the stimulus generation and data acquisition
 
     """
-    def __init__(self, required_hardware=["Soundcard"], ni_devicename="dev1", controller=None):
+    def __init__(self, required_hardware=["Soundcard"], ni_devicename:str="Dev1", controller=None,
+                 acquisition_mode:str="abr"):
         """
         During initialization, we identify what hardware is available.
 
@@ -195,14 +198,15 @@ class PyStim:
         self.State.controller = controller
         self.Stimulus = Stimulus_Parameters()  # create instance of the stimulus
 
-        self.find_hardware()  # look for the required hardware and make sure we can talk to it.
+        self.find_hardware(acquisition_mode = acquisition_mode)  # look for the required hardware and make sure we can talk to it.
 
         self.ch1 = None  # These will be arrays to receive the a/d sampled data
         self.ch2 = None
         self.audio = None  # pyaudio object  - get later
-        self.NIDAQ_task = None  # nidaq task object - get later
+        self.State.NIDAQ_task = None  # nidaq task object - get later
+        self.stim_mutex = QMutex()
 
-    def find_hardware(self, verbose:bool=False):
+    def find_hardware(self, acquisition_mode="abr", verbose:bool=False):
         """
         Find the required hardware on the system.
         For non-windows systems, this just finds the system soundcard for testing
@@ -223,19 +227,33 @@ class PyStim:
             #  TODO: check for other sound card sample rates, and use the maximum rate
             # or a specified rate from the configuration file.
         elif opsys == "Windows":
-            if "NIDAQ" in self.State.required_hardware and self.setup_nidaq():
+            if "NIDAQ" in self.State.required_hardware: #  and self.setup_nidaq():
                 self.State.hardware.append("NIDAQ")
-                self.setup_nidaq()
+                # self.setup_nidaq()
             if "RP21" in self.State.required_hardware:
+                assert acquisition_mode in ["abr", "calibrate"]
                 print("looking for RP21")
-                if self.setup_RP21(
-                    # "c:\\TDT\\OpenEx\\MyProjects\\Tetrode\\RCOCircuits\\tone_search.rcx"
-                    "c:\\users\\experimenters\\desktop\\pyabr\\tdt\\abrs.rcx"
-                ):
-                    self.State.hardware.append("RP21")
+                if acquisition_mode == "abr":
+                    if self.setup_RP21(
+                     # "c:\\TDT\\OpenEx\\MyProjects\\Tetrode\\RCOCircuits\\tone_search.rcx"
+                        "c:\\users\\experimenters\\desktop\\pyabr\\tdt\\abrs.rcx",
+                        acquisition_mode="abr"
+                    ):
+                        self.State.hardware.append("RP21")
+                    else:
+                        print("RP21 expected, but was not found")
+                        raise NotImplementedError("RP21 expected, but was not found")
+                elif acquisition_mode == "calibrate":
+                    if self.setup_RP21(
+                        "c:\\Users\\experimenters\\Desktop\\pyabr\\tdt\\mic_record.rcx",
+                        acquisition_mode="calibrate"):
+                        self.State.hardware.append("RP21")
+                    else:
+                        print("RP21 expected, but was not found")
+                        raise NotImplementedError("RP21 expected, but was not found")
+               
                 else:
-                    print("RP21 expected, but was not found")
-                    raise NotImplementedError("RP21 expected, but was not found")
+                    raise ValueError(f"RP21 acquisition mode must be 'abr' or 'calibrate'; got: '{acquisition_mode:s}'")
             if "PA5" in self.State.required_hardware and self.setup_PA5():
                 self.State.hardware.append("PA5")
             if "RZ5D" in self.State.required_hardware and self.setup_RZ5D():
@@ -246,7 +264,7 @@ class PyStim:
         print("Hardware found: ", self.State.hardware)
 
     def getHardware(self):
-        """getHardware get some information about the hardware setup
+        """getHardware: get some information about the hardware setup
 
         Returns
         -------
@@ -259,17 +277,21 @@ class PyStim:
         ValueError
             if not valid hardware is in the State list of hardware.
         """
-        print(self.State.hardware)
+        print("Hardware: self.state.hardware: ", self.State.hardware)
         if "NIDAQ" in self.State.hardware:
             sfout = self.Stimulus.NI_out_sampleFreq
-        elif "RP21" in self.State.hardware and "NIDAQ" not in self.State.hardware:  # only one output device for output
+        elif "RP21" in self.State.hardware:
             sfout = self.Stimulus.RP21_out_sampleFreq
-            sfin = self.Stimulus.RP21_in_sampleFreq
         elif "Soundcard" in self.State.hardware:
             sfout = self.Stimulus.soundcard_out_sampleFreq
+        else:
+            raise ValueError("pystim.getHardware: No Valid OUTPUT hardware found")
+        if "RP21" in self.State.hardware:
+            sfin = self.Stimulus.RP21_in_sampleFreq
+        elif "Soundcard" in self.State.hardware:
             sfin = self.Stimulus.soundcard_in_sampleFreq
         else:
-            raise ValueError("pystim.getHardware: No Valid hardware found")
+            raise ValueError("pystim.getHardware: No Valid INTPUT hardware found")
         print("Hardware: ", self.State.hardware)
         print("Sample Freqs: ", sfout, sfin)
         return (self.State.hardware, sfin, sfout)
@@ -288,8 +310,8 @@ class PyStim:
             if self.RP21 is not None:
                 self.RP21.Halt()
         if "NIDAQ" in self.State.hardware:
-            if self.NIDAQ_task is not None:
-                self.NIDAQ_task.close()
+            if self.State.NIDAQ_task is not None:
+                self.State.NIDAQ_task.close()
         if "pyaudio" in self.State.hardware:
             if self.audio is not None:
                 self.audio.terminate()
@@ -304,7 +326,7 @@ class PyStim:
         # get the drivers and the activeX control (win32com)
         self.NIDevice = nidaqmx.system.System.local()
         self.NIDevicename = self.NIDevice.devices.device_names
-        # self.Stimulus.NI_out_sampleFreq = 500000  # output frequency, in Hz
+        self.Stimulus.NI_out_sampleFreq = 1000000  # output frequency, in Hz
         return True
 
     def show_nidaq(self):
@@ -341,7 +363,7 @@ class PyStim:
         self.PA5.SetAtten(120.0)  # set all attenuators to maximum attenuation
         return True
 
-    def setup_RP21(self, rcofile: str = ""):
+    def setup_RP21(self, rcofile: str = "", acquisition_mode="abr"):
         """
         Make an ActiveX connection to theTDT RP2.1 Real-Time Processor
         and load the RCO file.
@@ -357,17 +379,20 @@ class PyStim:
         if not Path(self.RP21_rcofile).is_file():
             raise FileNotFoundError(f"The required RP2.1 RCO file was not found \n    (Looking for {self.RP21_rcofile})")
         self.RP21 = win32com.client.Dispatch("RPco.x")  # connect to RP2.1
-        # print(self.RP21)
-        # print(dir(self.RP21))
-        # try to make the connection
         a = self.RP21.ConnectRP2("USB", 0)
         if a > 0:
             print(f"pystim.setup_RP21: RP2.1 connected, status: {a:d}")
         else:
             print("connect status: ", a)
             raise IOError(f"pystim.setup_RP21: RP2.1 requested in hardware, but connection failed with status: {a:d}")
+            exit()
         self.RP21.ClearCOF()
-        self.samp_cof_flag = 4  # 2 is for 24.4 kHz
+        if acquisition_mode == "abr":
+            self.samp_cof_flag = 4  # set for 97 kHz
+        elif acquisition_mode == "calibrate":
+             self.samp_cof_flag = 5 
+        else:
+            raise ValueError(f"Acquistion mode must be either 'abr' or 'calibrate', got '{acquisition_mode:s}'")
         self.samp_flist = [
             6103.5256125,
             12210.703125,
@@ -423,11 +448,17 @@ class PyStim:
         if self.RZ5D.getModeStr() != "Idle":
             self.RZ5D.setModeStr("Idle")
 
-    def cleanup_NIDAQ(self):
-        if self.NIDAQ_task is not None:
-            self.NIDAQ_task.stop()  # done, so stop the output.
-            self.NIDAQ_task.close()
-            self.NIDAQ_task = None
+    def cleanup_NIDAQ_RP21(self):
+        self.stim_mutex.lock()
+        if "PA5" in self.State.hardware:
+            self.setAttens()  # attenuators down (there is noise otherwise)
+        # if self.State.NIDAQ_task is not None:
+        #     self.State.NIDAQ_task.stop()  # done, so stop the output.
+        #     self.State.NIDAQ_task.close()
+        #     self.State.NIDAQ_task = None
+        if "RP21" in self.State.hardware:
+            self.RP21.Halt()
+        self.stim_mutex.unlock()
 
     # internal debug flag to control printing of intermediate messages
     def debugOn(self):
@@ -451,6 +482,7 @@ class PyStim:
         if self.State.debugFlag:
             print("pystim.dbconvert: scale = %f for %f dB" % (sf, spl))
         return sf  # return a scale factor to multiply by a waveform normalized to 1
+    
 
     def setAttens(self, atten_left=120.0, atten_right=120.0):
         if "PA5" in self.State.hardware:
@@ -465,11 +497,12 @@ class PyStim:
         wavel,
         waver=None,
         samplefreq=44100,
-        postduration=0.1,
+        postduration=0.025,
         attns=[20.0, 20.0],
         isi=1.0,
         reps=1,
         protocol="Search",
+        mode="record", # or "calibrate"
         storedata=True,
     ):
         """
@@ -507,7 +540,7 @@ class PyStim:
 
         # if we are just using pyaudio (linux, MacOS), set it up now
         if "pyaudio" in self.State.hardware:
-            dur = len(wavel) / float(samplefreq)
+            dur = len(wavel) / float(self.Stimulus.soundcard_out_sampleFreq)
             self.Ndata = int(np.ceil((dur + postduration) *  self.Stimulus.soundcard_out_sampleFreq))
             if self.audio is None:
                 self.audio = pyaudio.PyAudio()
@@ -546,188 +579,80 @@ class PyStim:
             return
 
         if "NIDAQ" in self.State.hardware:
-            dev = self.State.NI_devicename
-            self.NIDAQ_task = nidaqmx.Task()
-            self.NIDAQ_task.ao_channels.add_ao_voltage_chan(
-                f"{dev}/ao0", min_val=-10.0, max_val=10.0
-            )
+            if self.State.NIDAQ_task is not None:
+                raise ValueError("NIDAQ task has not been released")
+                exit()
+            print("Using NIDAQ")
             ndata = len(wavel)
-            print("NIDAQ clock: ", samplefreq)
-            self.NIDAQ_task.timing.cfg_samp_clk_timing(
-                rate=self.Stimulus.NI_out_samplefreq,
-                source="",
-                active_edge=Edge.RISING,
-                sample_mode=AcquisitionType.FINITE,
-                samps_per_chan=ndata,
-            )
+            dur = postduration + ndata / float(self.Stimulus.NI_out_sampleFreq)
+            self.waveout = wavel
 
-            daqwave = np.zeros(ndata * 2)
-            (wavel, clipl) = self.clip(wavel, 10.0)
-            if len(waver) is not None:
-                (waver, clipr) = self.clip(waver, 10.0)
-
-            daqwave[0 : len(wavel)] = wavel
-            if len(waver) is not None:
-                daqwave[len(wavel) :] = waver
-            # concatenate channels (using "groupbychannel" in writeanalogf64)
-            dur = ndata / float(samplefreq)
-            self.NIDAQ_task.write(wavel)
 
             if "RP21" in self.State.hardware:
                 self.Ndata = int(np.ceil((dur + postduration) * self.Stimulus.RP21_out_sampleFreq))
                 self.RP21.SetTagVal("REC_Size", self.Ndata)  # old version using serbuf  -- with
-                # new version using SerialBuf, can't set data size - it is fixed.
-                # however, old version could not read the data size tag value, so
-                # could not determine when buffer was full/acquisition was done.
+                # a = self.RP21.Run()  # start the RP2.1 processor...
+                # print("RP2.1 started")
             if "PA5" in self.State.hardware:
+                print("setting attns: ", attns)
                 self.setAttens(atten_left=attns[0], atten_right=attns[1])
 
-            self.NIDAQ_task.start()  # start the NI AO task
-            if "RP21" in self.State.hardware:
-                a = self.RP21.Run()  # start the RP2.1 processor...
-                a = self.RP21.SoftTrg(1)  # and trigger it. RP2.1 will in turn start the ni card
-            self.PPGo = False
-            print("duration: ", dur)
-            while (
-                self.NIDAQ_task is not None and not self.NIDAQ_task.is_task_done()
-            ):  # wait for AO to finish?
-                if not self.PPGo:  # while waiting, check for stop.
-                    time.sleep(dur)
-                    if "RP21" in self.State.hardware:
-                        self.RP21.Halt()
-                    # self.NIDAQ_task.stop()
-                    # return
-            self.cleanup_NIDAQ()
-            if self.NIDAQ_task is not None:
-                self.NIDAQ_task.stop()  # done, so stop the output.
-                self.NIDAQ_task.close()
+            # if "RP21" in self.State.hardware:
+            #     a = self.RP21.SoftTrg(0)  # and trigger it. RP2.1 will in turn start the ni card
+            #     print("softtrig set, returns", a)
+            self.prepare_NIDAQ(wavel, None, timeout=dur, re_armable=False)
+            dur = 1.5
+            print("dur: ", dur)
+            # self.State.NIDAQ_task.wait_until_done(timeout=dur)
+
+            # while (
+            #     (self.State.NIDAQ_task is not None) or (not self.State.NIDAQ_task.is_task_done())
+            # ):  # wait for AO to finish?  The call back will set the task to non
+            #     time.sleep(0.01)
+            #     print("done? : ", self.State.NIDAQ_task.is_task_done())
+            # print("task is done: ", self.State.NIDAQ_task.is_task_done())
+            # self.stop_nidaq()
+
             if "PA5" in self.State.hardware:
                 self.setAttens()  # attenuators down (there is noise otherwise)
-            # read the data...
-            curindex1 = self.RP21.GetTagVal("Index1")
-            # print(curindex1)
-            curindex2 = self.RP21.GetTagVal("Index2")
-            if "RP21" in self.State.hardware:
-                self.RP21.Halt()
-            #     while (
-            #         curindex1 < Ndata or curindex2 < Ndata
-            #     ):  # wait for input data to be sampled
-            #         # if not self.PPGo:  # while waiting, check for stop.
-            #         #     self.RP21.Halt()
-            #         #     return
-            #         curindex1 = self.RP21.GetTagVal("Index1")
-            #         curindex2 = self.RP21.GetTagVal("Index2")
-            #         print(curindex1, curindex2)
 
             if "RP21" in self.State.hardware:
+                self.RP21.SoftTrg(0)
+
                 self.ch2 = self.RP21.ReadTagV("Data_out2", 0, self.Ndata)
                 # ch2 = ch2 - mean(ch2[1:int(Ndata/20)]) # baseline: first 5% of trace
                 self.ch1 = self.RP21.ReadTagV("Data_out1", 0, self.Ndata)
                 self.RP21.Halt()
-                self.t_stim = np.arange(
-                    0, len(wavel) / samplefreq, 1.0 / samplefreq
-                )
-                self.t_record = np.arange(0, float(self.Ndata) / self.Stimulus.RP21_in_sampleFreq, 1.0 / self.Stimulus.RP21_in_sampleFreq,)
-                # pg.plot(t_stim, wavel)
-                # pg.plot(t_record, self.ch1)
-                # if (sys.flags.interactive != 1) or not hasattr(pg.QtCore, "PYQT_VERSION"):
-                #     pg.QtGui.QGuiApplication.instance().exec()
+                # compute stimulus and recording waveforms
+                if "NIDAQ" in self.State.hardware:
+                    self.t_stim = np.arange(
+                        0, len(wavel) / self.Stimulus.NI_out_sampleFreq, 1.0 /self.Stimulus.NI_out_sampleFreq
+                    )
+                else:  # output is via RP21
+                    self.t_stim = np.arange(
+                        0, len(wavel) / self.Stimulus.RP21_out_sampleFreq, 1.0/self.Stimulus.RP21_out_sampleFreq
+                    )   
+                self.t_record = np.arange(0, float(self.Ndata) / self.Stimulus.RP21_in_sampleFreq,
+                                           1.0 / self.Stimulus.RP21_in_sampleFreq,)
+            # self.cleanup_NIDAQ_RP21()
 
-        if "PA5" in self.State.hardware:
-            # print("539: attns: ", attns)
-            self.setAttens(atten_left=attns[0], atten_right=attns[1])
 
-        if "RZ5D" in self.State.hardware:
-            swcount = -1
-            timeout = isi * reps + 1
-            # Start and run the stim/recording for specified # sweeps/time.
-            # self.RZ5D.setModeStr(runmode)
-            self._present_stim(
-                wavel,
-                stimulus_period=isi,
-                repetitions=reps,
-                runmode=runmode,
-                protocol=protocol,
-                timeout=timeout,
-            )  # this sets up the NI card.
-            # at this point we return to the main caller
-            # stimuli will be presented and data collected (if in record mode)
-            # The caller needs to check for the done_flag
 
-            # while time.time()-start_time < deadmantimer:
-            #     time.sleep(0.01)
-            # sweeps_start = self.RZ5D.getSystemStatus()['recordSecs']
-            # currTime = 0
-            # prevTime = 0
-            # print(f"ISI: {isi:.3f}  reps: {reps:d}, runmode: {runmode:s}")
-            # print(f"Running for maximum of: {deadmantimer:.2f} seconds")
-            # while currTime < deadmantimer:
-            #     currTime = self.RZ5D.getSystemStatus()['recordSecs']-sweeps_start
-            #     if prevTime != currTime:
-            #         print(f"Running, sweeps time elapsed: {currTime:d} sec")
-            #     prevTime = currTime
-            # TFR end comment 10/12/21
-            # print("nidaq has stopped")
-            # if runmode == "Preview":
-            #     return
-            # else:
-            #     self.RZ5D.setModeStr("Idle")  # was (RZ5D_Standby)
 
-            # self.setAttens(atten_left=120)
-
-    def _present_stim(
-        self,
-        waveforms,
-        stimulus_period: float = 1.0,
-        repetitions: int = 1,
-        runmode: str = "Preview",
-        protocol: str = "Search",
-        timeout: float = 10.0,
-    ):
-        """_present_stim configure the RZ5D and the NIDAQ for stimulus presentation
-
-        Parameters
-        ----------
-        waveforms : _type_
-            _description_
-        stimulus_period : float, optional
-            _description_, by default 1.0
-        repetitions : int, optional
-            _description_, by default 1
-        runmode : str, optional
-            _description_, by default "Preview"
-        protocol : str, optional
-            _description_, by default "Search"
-        timeout : float, optional
-            _description_, by default 10.0
-        """
-        if "RZ5D" not in self.State.hardware:
-            return
-        self.State.done = False
-        if self.RZ5D.getModeStr() != runmode:  # make sure the rz5d is in the requested mode first
-            self.RZ5D.setModeStr(runmode)
-        ##################################################################################
-        # Set up the stimulus timing
-        # We use the PulseGen1 to write to digital line out 0
-        # This bit controls/triggers the timing of the stimuli (interstimulus interval)
-
-        params = self.RZ5D.getParameterNames("PulseGen1")
-        self.RZ5D.setParameterValue("PulseGen1", "PulsePeriod", stimulus_period)
-        self.RZ5D.setParameterValue("PulseGen1", "DutyCycle", 1.0)  # 1 msec pulse
-        self.RZ5D.setParameterValue("PulseGen1", "Enable", 1.0)
-        ##################################################################################
-
-        self.prepare_NIDAQ(waveforms, repetitions=repetitions)  # load up NIDAQ to go
-
-    def stop_nidaq(self):
+    def stop_nidaq(self, task_handle=None):
         """
         Only stop the DAC, not the RZ5D
         This is used when reloading a new stimulus.
         """
-        if self.State.NI_task is not None:
-            self.State.NI_task.close()  # release resources
-            self.State.NI_task = None  # need to destroy value
+        self.stim_mutex.lock()
+        if task_handle is None:
+            task_handle = self.State.NIDAQ_task
+        if task_handle is not None:
+            task_handle.stop()
+            task_handle.close()  # release resources
+            self.State.NIDAQ_task = None  # need to destroy value
             self.State.running = False
+        self.stim_mutex.unlock()
 
     def stop_recording(self):
         """
@@ -744,66 +669,90 @@ class PyStim:
         This gets the card ready to put out the buffer with the
         next trigger pulse
         """
-        self.State.NI_task.write(self.waveout, auto_start=False)
-        #  self.State.NI_task.triggers.start_trigger.trig_type.DIGITAL_EDGE
-        self.State.NI_task.triggers.start_trigger.cfg_dig_edge_start_trig(
-            trigger_source=f"{self.State.NI_devicename:s}/PFI0",
+        if self.State.NIDAQ_task is None:
+            raise ValueError(f"NIDAQ task is not available? ")    
+        self.State.NIDAQ_task.write(self.waveout, auto_start=False)
+        trigger_source = f"/{self.State.NI_devicename:s}/PFI0"
+        self.State.NIDAQ_task.triggers.start_trigger.trig_type.DIGITAL_EDGE
+        self.State.NIDAQ_task.triggers.start_trigger.cfg_dig_edge_start_trig(
+            trigger_source=trigger_source,
             trigger_edge=Edge.RISING,
         )
         self.State.running = True
 
-    def re_arm_NIDAQ(self):
+    def re_arm_NIDAQ(self, task_handle, status, callback_data):
         """
         Callback for when the daq is done...
         Re arm the dac card and start the task again
         """
-
-        if self.State.NI_task.is_task_done():
-            self.State.NI_task.stop()
+        print("rearm: ", task_handle, status, callback_data)
+        if not self.re_arm:  # one-shot
+            return 0
+    
+        
+        if task_handle.is_task_done():
+            task_handle.stop()
             self.arm_NIDAQ()  # reload
-            self.State.NI_task.start()
+            task_handle.start()
             self.State.stimulus_count += 1
 
             counter_elapsed = self.State.stimulus_count > self.repetitions
             #   controller_running = self.State.controller.running
             timeout = False  # (time.time() - self.start_time) > self.timeout
             if counter_elapsed or (not self.State.running) or timeout:
-                self.stop_nidaq()
+                self.stop_nidaq(task_handle=task_handle)
                 self.State.done = True
-                return False
-        return True
 
-    def load_and_arm_NIDAQ(self):
+        return 0
+
+    def load_and_arm_NIDAQ(self, re_arm:bool=False):
         """
         Initial setup of NI card for AO.
         Creates a task for the card, sets parameters, clock rate,
         and does setup if needed.
         A callback is registered so that when the task is done, the
-        board is re-armed for the next trigger.
-        This does not block the GUI.
+        board is either released or re-armed for the next trigger.
+        The callback is used so that the task does not block the GUI.
         """
-        self.State.NI_task = nidaqmx.task.Task("NI_DAC_out")
-        channel_name = f"/{self.State.NI_devicename:s}/ao0"
-        self.State.NI_task.ao_channels.add_ao_voltage_chan(  # can only do this once...
-            channel_name, min_val=-10.0, max_val=10.0, units=VoltageUnits.VOLTS
-        )
-        self.State.NI_task.register_done_event(self.re_arm_NIDAQ(status))
+            
+        self.re_arm = re_arm
+        this_starttime = time.time()
+        failed = False
+        with nidaqmx.task.Task("NI_DAC_out") as self.State.NIDAQ_task:
+            channel_name = f"/{self.State.NI_devicename:s}/ao0"
+            self.State.NIDAQ_task.ao_channels.add_ao_voltage_chan(  # can only do this once...
+                channel_name, min_val=-10.0, max_val=10.0, units=VoltageUnits.VOLTS
+            )
+            self.State.NIDAQ_task.timing.cfg_samp_clk_timing(
+                rate = self.Stimulus.NI_out_sampleFreq,
+                source="",
+                sample_mode=AcquisitionType.FINITE,
+                samps_per_chan=len(self.waveout),
+            )
 
-        self.State.NI_task.timing.cfg_samp_clk_timing(
-            rate = self.Stimulus.NI_out_sampleFreq,
-            source="",
-            sample_mode=AcquisitionType.FINITE,
-            samps_per_chan=len(self.waveout),
-        )
-
-        # if not self.State.running:
-        #     self.State.NI_task.stop()
-        #     return False
-        self.arm_NIDAQ()  # setup the DAC card
-        self.State.NI_task.start()  # and start it
+            self.State.NIDAQ_task.triggers.start_trigger.cfg_dig_edge_start_trig(
+                trigger_source="/Dev1/PFI0",
+                trigger_edge=Edge.RISING,
+            )
+            self.State.NIDAQ_task.write(self.waveout)
+            self.State.NIDAQ_task.start()
+            if "RP21" in self.State.hardware:
+                self.RP21.Run()
+                a = self.RP21.SoftTrg(1)  # and trigger it. RP2.1 will in turn start the ni card
+                print("softtrig ste to start, returned:", a)
+            while not self.State.NIDAQ_task.is_task_done():
+                now_time = time.time()
+                if now_time - this_starttime > 5.0:
+                    failed = True
+                    print("arming nidaq/task execution FAILED")
+                    break
+            self.RP21.SoftTrg(0)
+            self.State.NIDAQ_task.stop()
+        # self.State.NIDAQ_task.close()
+        self.State.NIDAQ_task = None
         return True
 
-    def prepare_NIDAQ(self, wavel, waver=None, repetitions: int = 1, timeout: float = 1200.0):
+    def prepare_NIDAQ(self, wavel, waver=None, repetitions: int = 1, timeout: float = 1200.0, re_armable:bool=False):
         """
         Set up and initialize the NIDAQ card for output,
         then let it run and keep up with each task completion
@@ -812,14 +761,14 @@ class PyStim:
         so we can setup right away.
         """
 
-        self.stop_nidaq()  # stop the DAC if it is running
+        # self.stop_nidaq()  # stop the DAC if it is running
         self.waveout = wavel
         self.repetitions = repetitions
         self.State.stimulus_count = 0
         (self.waveout, clipl) = self.clip(self.waveout, 10.0)  # clip the wave if it's >10V
         self.start_time = time.time()
         self.timeout = timeout
-        self.load_and_arm_NIDAQ()
+        self.load_and_arm_NIDAQ(re_arm=re_armable)
 
     def retrieveRP21_inputs(self):
         return (self.ch1, self.ch2)
@@ -835,7 +784,9 @@ class PyStim:
                 pass  # possible we never created teh stream...
 
         if "NIDAQ" in self.State.hardware:
-            self.stop_nidaq()
+            if self.State.NIDAQ_task is not None:
+                self.Stat.NIDAQ_task.register_done_event(None)
+                self.stop_nidaq(task_handle=self.State.NIDAQ_task)
 
         if "RP21" in self.State.hardware:
             self.RP21.Halt()
@@ -905,13 +856,15 @@ def read_array(stream, size, channels=1):
 
 if __name__ == "__main__":
 
-    p = PyStim(hdw=["PA5", "NIDAQ", "RP21"], devicename="dev1")
+    p = PyStim(required_hardware=["PA5", "NIDAQ", "RP21"], ni_devicename="dev1")
 
-    ni_sampld_frequency = 100000
-    w = np.cos(2 * np.pi * 2000.0 * np.arange(0, 0.2, 1.0 / ni_sample_frequency))
-    p.setAttens(atten_left=30)
-    p._present_stim(w)
-    time.sleep(2.0)
-    # p.RZ5D.setModeStr("Idle")
-    # p.task.stop()
-    p.setAttens()
+    ni_sample_frequency = 100000
+    t = np.arange(0, 2.0, 1.0 / ni_sample_frequency)
+    w = 10* np.cos(2 * np.pi * 1000.0 * t)
+    # import matplotlib.pyplot as mpl
+    # mpl.plot(t, w)
+    # mpl.show()
+
+    p.play_sound(w)
+
+    # p.stop_nidaq()

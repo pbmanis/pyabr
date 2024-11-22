@@ -53,6 +53,7 @@ class Presenter(QObject):  # (QtCore.QRunnable):
     signal_data_ready = pyqtSignal(
         np.ndarray, int, int
     )  #  returns 2 channels in the array, then the wave number and trial counter
+    signal_repetitions_done = pyqtSignal()
     signal_paused = pyqtSignal()  # status of running: paused or not
     signal_stop = pyqtSignal()  # stop protocol entirely
 
@@ -145,6 +146,8 @@ class Presenter(QObject):  # (QtCore.QRunnable):
         if self.repetition_counter >= self.n_repetitions:
             self.wave_counter += 1
             self.repetition_counter = 0  # reset reps
+            if self.wave_counter < self.n_waves:
+                self.signal_repetitions_done.emit()
         if self.wave_counter >= self.n_waves:
             self.signal_finished.emit()
             self._finished = True
@@ -163,47 +166,51 @@ class Presenter(QObject):  # (QtCore.QRunnable):
             self.wavekeys[self.wave_counter][1],
             sec_key,
         )
-        # print(
-        #     self.wave_counter,
-        #     self.wavekeys[self.wave_counter],
-        #     self.repetition_counter,
-        #     "/",
-        #     self.n_repetitions,
-        # )
+       
 
         if self.wavetype in ["click", "tonepip"]:
-            wave = self.wave_matrix[self.wavekeys[self.wave_counter]]["sound"]
-            sfout = self.wave_matrix[self.wavekeys[self.wave_counter]]["rate"]
-            # print("presenter: sfout: ", sfout)
+            """
+            present clicks and tone pips. Here, we use multiple waveforms in the array
+            wave_matrix, and use the attenuation setting to adjust the attenuators.
+            This is the "old way" of doing things - one intensity and frequency at
+            a time.
+            """
             if self.wave_counter >= self.n_waves:
                 self.retrieve_data()
                 self.signal_finished.emit()
                 self._finished = True
                 self._running = False
                 return
-
-            listed_attn = self.wavekeys[self.wave_counter][1]
-            if self.wavetype in ["click"]:
-                attn = MAX_CLICK - listed_attn
-            else:
-                attn = listed_attn  # for tones, just use the attenuation
+            wave = self.wave_matrix[self.wavekeys[self.wave_counter]]["sound"]
+            sfout = self.wave_matrix[self.wavekeys[self.wave_counter]]["rate"]
+            attn = self.wave_matrix[self.wavekeys[self.wave_counter]]["attenuation"][0]
 
             self.sound_class.play_sound(
                 wave,
                 wave,
                 samplefreq=sfout,
-                attns=[attn, attn],
+                attns=[attn, attn],  # set both attenuators
             )
             self.retrieve_data()
 
-        else:  # other stimuli.
-            listed_attn = self.wavekeys[self.wave_counter][1]
+        else:  # all other stimuli.
+            """
+            Present a single waveform that contains many stimulus frequencies
+            and levels in one sweep, but many times. 
+            All presentation is done with a single attenuation that is 
+            calculated to provide the best dynamic range of the DAC output
+            given the range of individual frequency levels that need to be
+            accomodated. 
+            Note that the db value that appears in the wave key is the
+            same as the attenuation value.
+            """
+
             wave = self.wave_matrix[self.wavekeys[0]]["sound"]
             sfout = self.wave_matrix[self.wavekeys[0]]["rate"]
+            attn = self.wavekeys[self.wave_counter][1]  # ]["attenuation"][0]
             self.sound_class.play_sound(
-                wave, wave, samplefreq=sfout, attns=[listed_attn, listed_attn]
+                wave, wave, samplefreq=sfout, attns=[attn, attn]
             )
-
             self.retrieve_data()
 
         return

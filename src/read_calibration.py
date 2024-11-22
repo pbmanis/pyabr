@@ -6,6 +6,8 @@ import matplotlib.pyplot as mpl
 import pyqtgraph as pg
 #
 
+SPLCAL_Tone_Voltage = 10.0  # V from matlab calibration (hardware_initialization.m)
+SPLCAL_Click_Voltage = 10.0 # V for clicks
 use_matplotlib = False
 
 """File structure is: 
@@ -32,8 +34,11 @@ maxdB refers to max sound pressure level at 0 dB attenuation.
 """
 
 def get_calibration_data(fn):
-
+    if not Path(fn).is_file():
+        raise ValueError(f'Calibration file: {str(fn):s} not found')
+        exit()
     dm = scipy.io.loadmat(fn, appendmat=False,  squeeze_me=True)
+    print(fn)
     d = dm["CAL"].item()
     caldata = {}
     caldata['refspl'] = d[0]
@@ -53,6 +58,37 @@ def get_calibration_data(fn):
     caldata['filename'] = fn
 
     return caldata
+
+def get_microphone_calibration(fn):
+    dm = scipy.io.loadmat(fn, appendmat=False,  squeeze_me=True)
+    print(fn)
+    """
+     MIC is a structure with the following fields:
+
+          Gain: 20  # amplifier gain
+        RefSig: 94  # level used for the calibration in this file
+          Vrms: 0.0395  # raw rms microphone voltage, in V
+        Vref_c: 0.0286  # cosinor measure of microphone voltage, in Vrms
+       Vref_bp: 0.0389  # bandpassed measure of microphone voltae, in Vrms
+    Microphone: '7016#10252'  # identiy of the the microphone
+          Date: '11-Jan-2022'  # date of calibration
+      dBPerVPa: -48.2029   # sensitivity
+       mVPerPa: 3.8892   # calibration factor
+    """
+    d = dm["MIC"].item()
+    micdata = {}
+    micdata['cal_gain'] = d[0]
+    micdata['cal_ref'] = d[1]
+    micdata['Vrms'] = d[2]
+    micdata['Vref_c'] = d[3]
+    micdata['Vref_bp'] = d[4]
+    micdata["microphone"] = d[5]
+    micdata["date"] = d[6]
+    micdata["dBPerVPa"] = d[7]
+    micdata["mVPerPa"] = d[8]
+
+    print(micdata)
+    return micdata
 
 def plot_calibration(caldata, plot_target = None):
     txt = f"Gain: {caldata['gain']:.1f}  Cal attn: {caldata['calattn']:.1f} dB, "
@@ -85,11 +121,12 @@ def plot_calibration(caldata, plot_target = None):
         else:
             pl = plot_target
         freqs = caldata['freqs']
+        pl.addLegend()
         pl.setLogMode(x=True, y=False)
-        pl.plot(freqs, caldata['maxdb'], pen='r')
-        pl.plot(freqs, caldata['db_cs'], pen='w')
-        pl.plot(freqs, caldata['db_bp'], pen='g')
-        pl.plot(freqs, caldata['db_nf'], pen='b')
+        pl.plot(freqs, caldata['maxdb'], pen='r', name="Max SPL (0 dB Attn)")
+        pl.plot(freqs, caldata['db_cs'], pen='w', name=f"Measured dB SPL, attn={caldata['calattn']:.1f} cosinor")
+        pl.plot(freqs, caldata['db_bp'], pen='g', name=f"Measured dB SPL, attn={caldata['calattn']:.1f}, bandpass")
+        pl.plot(freqs, caldata['db_nf'], pen='b', name="Noise Floor")
         # pl.setLogMode(x=True, y=False)
         pl.setLabel("bottom", "Frequency", units="Hz")
         pl.setLabel("left", "dB SPL")
@@ -100,6 +137,8 @@ def plot_calibration(caldata, plot_target = None):
 
         if plot_target is None:
             pg.exec()
+
+            
 if __name__ == "__main__":
     import sys
     configtype = "lab"
@@ -121,3 +160,4 @@ if __name__ == "__main__":
 
     d = get_calibration_data(fn)
     plot_calibration(d)
+    # get_microphone_calibration("calfiles/microphone_7016#10252.cal")

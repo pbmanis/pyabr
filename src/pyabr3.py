@@ -29,6 +29,7 @@ from src import convert_nested_ordered_dict as convert_nested_ordered_dict
 from src import presenter_thread as presenter_thread
 from src import protocol_reader as protocol_reader
 from src import pystim as pystim
+from src import wave_generator as wave_generator
 from src import sound as sound  # for waveform generation
 from src.build_parametertree import build_parametertree
 import src.read_calibration as read_calibration
@@ -50,8 +51,8 @@ class PyABR(QtCore.QObject):
     signal_stop = pyqtSignal()
     signal_quit = pyqtSignal()
 
-    def __init__(self, configtype: str = "test"):
-        assert configtype in ["test", "lab"]
+    def __init__(self, configtype: str = "abr"):
+        assert configtype in ["test", "abr"]
         if configtype == "test":
             configfilename = "config/abrs_test.cfg"
         else:
@@ -69,13 +70,14 @@ class PyABR(QtCore.QObject):
         self.calfile = Path(self.config["calfile"])  # get calibration file
         self.caldata = read_calibration.get_calibration_data(self.calfile)
         now = datetime.datetime.now()
-
+        self.WG = wave_generator.WaveGenerator(caldata=self.caldata)
         self.Presenter = None  # the thread object that will be used for presenting stimuli
         self.wave_matrix: dict = {}
         self.ptreedata = None  # pyqtgraph parametertree  - set to None until the tree is built
         self.protocol = None
         self.debugFlag = True
-        self.link_traces = False
+        self.link_traces = True
+        self.raw_clear_N = 10
         self.read_protocol_directory()
         self.acq_mode = "test"
         self.basefn = None  # base file path/name for saving data
@@ -100,11 +102,12 @@ class PyABR(QtCore.QObject):
         self.Presenter.signal_error.connect(self.thread_error)
         self.Presenter.signal_finished.connect(self.finished)
         self.Presenter.signal_progress.connect(self.update_progress)
+        self.Presenter.signal_repetitions_done.connect(self.clear_average)
         self.Presenter.signal_mode_status.connect(self.update_mode)
         self.signal_pause.connect(self.Presenter.pause)
         self.signal_resume.connect(self.Presenter.resume)
         self.signal_stop.connect(self.Presenter.stop)
-        self.signal_stop.connect(self.PS.cleanup_NIDAQ)
+        # self.signal_stop.connect(self.PS.cleanup_NIDAQ_RP21)
         self.signal_quit.connect(self.Presenter.quit)
 
         # note after building the GUI, everything is handled througn callbacks
@@ -352,14 +355,18 @@ class PyABR(QtCore.QObject):
 
     def plot_stimulus_wave(self, n: int = 0):
         first_sound = self.wave_matrix[list(self.wave_matrix.keys())[n]]
-        t = np.arange(0, len(first_sound["sound"]) / first_sound["rate"], 1.0 / first_sound["rate"])
-        self.stimulus_waveform.clear()
+        t = np.arange(0, len(first_sound["sound"]) / float(first_sound["rate"]), 1.0 / first_sound["rate"])
+        if len(t) > len(first_sound["sound"]):
+            t = t[:len(first_sound["sound"])]
+        if (self.raw_clear_N > 0) and ((n % self.raw_clear_N) == 0):
+            self.stimulus_waveform.clear()
+            self.stimulus_waveform.setXRange(0, np.max(t))
         self.stimulus_waveform.plot(
             t,
             first_sound["sound"],
             pen=pg.mkPen("y"),
         )
-        self.stimulus_waveform.setXRange(0, np.max(t))
+
         # self.stimulus_waveform.autoRange()
 
     def update_plots(self):
@@ -415,222 +422,18 @@ class PyABR(QtCore.QObject):
         self.counter += 1  # nothing really to do here.
         time.sleep(0.01)
 
-    def make_waveforms(self, wavetype: str, dbspl=None, frequency=None):
+    def make_waveforms(self, wavetype, dbspls, frequencies):
         """
-        Generate all the waveforms we will need for this protocol.
-        Waveforms, held in self.wave_matrix,
-        are in a N x (wave) shape, where N is the number
-        of different stimuli. Waveforms are played out in the order
-        they appear in this array.
+        thin wrapper for the wavegenerator waveofmr maker.
         """
-        self.wave_matrix = {}
-        if dbspl is None:  # get the list?
-            dbspl = self.protocol["stimuli"]["dblist"]
-        if dbspl is None:  # still None ? use the default
-            dbspl = [self.protocol["stimuli"]["default_spl"]]
-        if frequency is None:
-            frequency = self.protocol["stimuli"]["frlist"]
-        if frequency is None:
-            frequency = [self.protocol["stimuli"]["default_frequency"]]
-        match wavetype:
-            case "click":
-                print("doing click")
+        self.WG.setup(protocol=self.protocol, frequency=1000000, config=self.config)  # output rate
+        self.WG.make_waveforms(wavetype=wavetype, dbspls=dbspls, frequencies=frequencies)
+        self.wave_matrix = self.WG.wave_matrix
 
-                freqs = [0] * len(dbspl)  # set to all zeros
-                starts = np.cumsum(
-                    np.ones(self.protocol["stimuli"]["nstim"])
-                    * self.protocol["stimuli"]["interval"]
-                )
-                starts += self.protocol["stimuli"]["delay"]
-                for i, db in enumerate(dbspl):
-                    wave = sound.ClickTrain(
-                        rate=self.sfout,
-                        duration=self.protocol["stimuli"]["wave_duration"],
-                        dbspl=self.config["reference_dbspl"],
-                        click_duration=self.protocol["stimuli"]["stimulus_duration"],
-                        click_starts=starts,
-                        alternate=self.protocol["stimuli"]["alternate"],
-                    )
-                    wave.generate()
-                    self.wave_matrix[("click", db, freqs[i])] = {
-                        "sound": wave.sound,
-                        "rate": self.sfout,
-                    }
-                    self.wave_time = wave.time
-                self.nwaves = len(dbspl)
 
-            case "tonepip":
 
-                starts = np.cumsum(
-                    np.ones(self.protocol["stimuli"]["nstim"])
-                    * self.protocol["stimuli"]["interval"]
-                )
-                starts += self.protocol["stimuli"]["delay"]
-                # print("tonepip ", frequency, dbspl)
-                dbref = 100.0
-                for i, db in enumerate(dbspl):
-                    for j, fr in enumerate(frequency):
-                        wave = sound.TonePip(
-                            rate=self.sfout,
-                            duration=self.protocol["stimuli"]["wave_duration"],
-                            f0=fr,
-                            dbspl=dbref,
-                            pip_duration=self.protocol["stimuli"]["stimulus_duration"],
-                            ramp_duration=self.protocol["stimuli"]["stimulus_risefall"],
-                            pip_start=starts,
-                            alternate=self.protocol["stimuli"]["alternate"],
-                        )
-                        # print("tonepip generate: ", db, fr)
-                        wave.generate()
-                        print("self.sfout: ", self.sfout)
-                        self.wave_matrix[("tonepip", db, fr)] = {
-                            "sound": wave.sound,
-                            "rate": self.sfout,
-                        }
-                        self.wave_time = wave.time
-                self.nwaves = len(dbspl) * len(frequency)
-
-            case "interleaved_plateau":
-                if dbspl is None:
-                    dbspl = self.protocol["stimuli"]["default_spl"]
-                if frequency is None:
-                    frequency = self.protocol["stimuli"]["default_frequency"]
-                dt = self.protocol["stimuli"]["stimulus_period"]
-                s0 = self.protocol["stimuli"]["delay"]
-                dbs = eval(self.protocol["stimuli"]["dblist"])
-                freqs = eval(self.protocol["stimuli"]["freqlist"])
-                wave_duration = s0 + len(dbs) * len(freqs) * dt + dt  # duration of the waveform
-                self.dblist = []
-                self.freqlist = []
-                n = 0
-                dbref = 100.0
-                for j, dbspl in enumerate(dbs):
-                    for i, frequency in enumerate(freqs):
-                        wave_n = sound.TonePip(
-                            rate=self.sfout,
-                            duration=wave_duration,
-                            f0=frequency,
-                            dbspl=dbspl,
-                            pip_duration=self.protocol["stimuli"]["stimulus_duration"],
-                            ramp_duration=self.protocol["stimuli"]["stimulus_risefall"],
-                            pip_start=[s0 + n * dt],
-                            alternate=False,  # do alternation separately here. self.protocol["stimuli"]["alternate"],
-                        )
-                        self.dblist.append(dbspl)
-                        self.freqlist.append(frequency)
-                        if i == 0 and j == 0:
-                            wave_n.generate()
-                            self.wave_out = wave_n.sound
-                            self.wave_time = wave_n.time
-                        else:
-                            self.wave_out += wave_n.generate()
-                        n += 1
-                self.wave_matrix["interleaved_plateau", 0] = {
-                    "sound": self.wave_out,
-                    "rate": self.sfout,
-                    "dbspls": self.dblist,
-                    "frequencies": self.freqlist,
-                }
-                self.nwaves = 1
-
-            case "interleaved_ramp":
-                if dbspl is None:
-                    dbspl = self.protocol["stimuli"]["default_spl"]
-                if frequency is None:
-                    frequency = self.protocol["stimuli"]["default_frequency"]
-                dt = self.protocol["stimuli"]["stimulus_period"]
-                s0 = self.protocol["stimuli"]["delay"]
-                dbs = eval(self.protocol["stimuli"]["dblist"])
-                freqs = eval(self.protocol["stimuli"]["freqlist"])
-                self.dblist = []
-                self.freqlist = []
-                wave_duration = s0 + len(dbs) * len(freqs) * dt + dt  # duration of the waveform
-                self.nwaves = self.protocol["stimuli"]["nreps"]
-                n = 0
-                dbref = 100.0
-                for i, frequency in enumerate(freqs):
-                    for j, dbspl in enumerate(dbs):
-
-                        wave_n = sound.TonePip(
-                            rate=self.sfout,
-                            duration=wave_duration,
-                            f0=frequency,
-                            dbspl=dbspl,
-                            pip_duration=self.protocol["stimuli"]["stimulus_duration"],
-                            ramp_duration=self.protocol["stimuli"]["stimulus_risefall"],
-                            pip_start=[s0 + n * dt],
-                            alternate=False,  # do alternation separately here. self.protocol["stimuli"]["alternate"],
-                        )
-                        self.dblist.append(dbspl)
-                        self.freqlist.append(frequency)
-                        if i == 0 and j == 0:
-                            wave_n.generate()
-                            self.wave_out = wave_n.sound
-                            self.wave_time = wave_n.time
-                        else:
-                            self.wave_out += wave_n.generate()
-                        n += 1
-
-                self.wave_matrix["interleaved_ramp", 0] = {
-                    "sound": self.wave_out,
-                    "rate": self.sfout,
-                    "dbspls": self.dblist,
-                    "frequencies": self.freqlist,
-                }
-                self.nwaves = 1  # self.protocol["stimuli"]["nreps"]
-
-            case "interleaved_random":
-                if dbspl is None:
-                    dbspl = self.protocol["stimuli"]["default_spl"]
-                if frequency is None:
-                    frequency = self.protocol["stimuli"]["default_frequency"]
-                dt = self.protocol["stimuli"]["stimulus_period"]
-                s0 = self.protocol["stimuli"]["delay"]
-                dbs = eval(self.protocol["stimuli"]["dblist"])
-                freqs = eval(self.protocol["stimuli"]["freqlist"])
-                wave_duration = s0 + len(dbs) * len(freqs) * dt + dt  # duration of the waveform
-                print("Wave duration: ", wave_duration)
-                n = 0
-                dbfr = np.tile(dbs, len(freqs))
-                frdb = np.tile(freqs, len(dbs))
-                indices = np.arange(len(dbfr))
-                np.random.shuffle(indices)  # in place.
-                self.dblist = dbfr[indices]
-                self.freqlist = frdb[indices]  # save the order so we can match the responses
-                dbref = 100.0
-                for n, isn in enumerate(indices):
-                    wave_n = sound.TonePip(
-                        rate=self.sfout,
-                        duration=wave_duration,
-                        f0=frdb[isn],
-                        dbspl=dbfr[isn],
-                        pip_duration=self.protocol["stimuli"]["stimulus_duration"],
-                        ramp_duration=self.protocol["stimuli"]["stimulus_risefall"],
-                        pip_start=[s0 + n * dt],
-                        alternate=False,  # do alternation separately here. self.protocol["stimuli"]["alternate"],
-                    )
-                    if n == 0:
-                        wave_n.generate()
-                        self.wave_out = wave_n.sound
-                        self.wave_time = wave_n.time
-                    else:
-                        self.wave_out += wave_n.generate()
-
-                    self.wave_matrix["interleaved_random", isn] = {
-                        "sound": self.wave_out,
-                        "rate": self.sfout,
-                        "dbspls": self.dblist,
-                        "frequencies": self.freqlist,
-                        "indices": isn,
-                    }
-                self.nwaves = 1
-                # self.protocol["stimuli"]["nreps"]
-            case _:
-                raise ValueError(f"Unrecongnized wavetype: {wavetype:s}")
-
-    def make_and_plot(self, n: int, wavetype: str, dbspl: list, frequency: list):
-
-        self.make_waveforms(wavetype=wavetype, dbspl=dbspl, frequency=frequency)
+    def make_and_plot(self, n: int, wavetype: str, dbspls: list, frequencies: list):
+        self.make_waveforms(wavetype=wavetype, dbspls=dbspls, frequencies=frequencies)
         for k in list(self.wave_matrix.keys()):
             print(k, np.max(self.wave_matrix[k]["sound"]))
         self.plot_stimulus_wave(n)
@@ -659,8 +462,8 @@ class PyABR(QtCore.QObject):
         self.make_and_plot(
             n=0,
             wavetype=self.protocol["protocol"]["stimulustype"],
-            dbspl=self.protocol["stimuli"]["dblist"],
-            frequency=flist,
+            dbspls=self.protocol["stimuli"]["dblist"],
+            frequencies=flist,
         )
         self.threadpool.start(self.Presenter.run)  # start the thread.
         if mode == "test":
@@ -705,22 +508,22 @@ class PyABR(QtCore.QObject):
         if self.TrialCounter == 0:
             self.plot_ABR_Raw.clear()
             self.plot_ABR_Average.clear()
-        self.TrialCounter = self.TrialCounter + 1
         # self.t_stim = np.arange(0, len(self.ch1_data)/self.PS.Stimulus.out_sampleFreq, 1./self.PS.Stimulus.out_sampleFreq )
         _, self.sfin, self.sfout = self.PS.getHardware()
         self.t_record = np.arange(0, len(self.ch1_data) / self.sfin, 1.0 / self.sfin)
-        self.plot_ABR_Raw.clear()
-        print(self.t_record.shape, self.ch1_data.shape)
-        self.plot_ABR_Raw.plot(self.t_record, self.ch1_data, pen=pg.mkPen("c"))
-        # self.plot_ABR_Raw.autoRange(True)
-        self.plot_ABR_Raw.setXRange(0, np.max(self.t_record))
-        avedata = None
-        self.plot_ABR_Average.clear()
+        if (self.raw_clear_N > 0) and ((self.TrialCounter % self.raw_clear_N) == 0):
+            self.plot_ABR_Raw.clear()
+            self.plot_ABR_Raw.setXRange(0, np.max(self.t_record))
+        if self.TrialCounter > 0:
+            self.plot_ABR_Raw.plot(self.t_record, self.ch1_data, pen=pg.mkPen(pg.intColor(self.TrialCounter, hues=10, values=10)))
+        else:
+            self.plot_ABR_Raw.plot(self.t_record, self.ch1_data, pen=pg.mkPen("w", width=2))
+
+        self.TrialCounter = self.TrialCounter + 1
         self.plot_ABR_Average.plot(
             self.t_record, self.summed_buffer / float(self.TrialCounter), pen=pg.mkPen("g")
         )
-        # self.plot_ABR_Raw.autoRange(True)
-        self.plot_ABR_Raw.setXRange(0, np.max(self.t_record))
+    
 
         if self.acq_mode == "test":
             return
@@ -769,14 +572,16 @@ class PyABR(QtCore.QObject):
             pickle.dump(out_data, fh, protocol=pickle.HIGHEST_PROTOCOL)
         del wave_copy    # delete the wave copy
 
+    def clear_average(self):
+        self.plot_ABR_Average.clear()
+
     def stop(self):
         """stop:  Stop stimulus presentation dead. 
         *** This function sends a signal to the Presenter thread
         to cleanly stop the stimulus presentation. The thread
         continues to run in the background (doing nothing..).
         """
-        self.PS.cleanup_NIDAQ()
-        self.signal_stop.emit()
+        self.signal_stop.emit()  # this calls the cleanup directly, so don't call here
         self.TrialTimer.stop()
 
     def pause(self):
@@ -803,8 +608,10 @@ class PyABR(QtCore.QObject):
 if __name__ == "__main__":
     import sys
     cmd = sys.argv[1:]
-    print("cmd: ", cmd)
-
-    prog = PyABR(cmd[0])
+    if len(cmd) > 0:
+        print("cmd: ", cmd)
+        prog = PyABR(cmd[0])
+    else:
+        prog = PyABR()
     if (sys.flags.interactive != 1) or not hasattr(pg.QtCore, "PYQT_VERSION"):
         QtWidgets.QApplication.instance().exec()
