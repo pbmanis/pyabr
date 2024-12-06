@@ -155,8 +155,8 @@ def play(args):
                 duration=0.4,
                 f0=cf,
                 dbspl=level,
-                pip_duration=0.1,
-                pip_start=[10e-3],
+                pip_duration=0.075,
+                pip_start=[0.1, 0.25],
                 ramp_duration=2.5e-3,
                 fmod=fmod,
                 dmod=dmod,
@@ -196,7 +196,7 @@ def play(args):
             )
 
         print(("Playing %s" % stim))
-        print(np.max(soundwave.sound))
+        print("sound max V: ", np.max(soundwave.sound))
         PS.play_sound(soundwave.sound, soundwave.sound, Fs)
 
         if plots:  # make one graph for each waveform requested
@@ -257,9 +257,10 @@ def main():
     symbols = ["o", "s", "t", "d", "+", "x"]
     # win.setBackground("w")
     p1 = win.addPlot(title=f"signal")
-    for i in range(1, 5):
+    for i in range(1, 3):
         PS = play(args)
         time.sleep(0.1)
+        print(PS.ch1.shape)
         p1.plot(PS.t_record[:PS.ch1.shape[0]], PS.ch1+0.1*i, pen=pg.mkPen(pg.intColor(i)))
     pg.exec()
 

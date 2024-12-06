@@ -107,7 +107,7 @@ class PyABR(QtCore.QObject):
         self.signal_pause.connect(self.Presenter.pause)
         self.signal_resume.connect(self.Presenter.resume)
         self.signal_stop.connect(self.Presenter.stop)
-        # self.signal_stop.connect(self.PS.cleanup_NIDAQ_RP21)
+        self.signal_stop.connect(self.PS.cleanup_NIDAQ_RP21)
         self.signal_quit.connect(self.Presenter.quit)
 
         # note after building the GUI, everything is handled througn callbacks
@@ -452,6 +452,10 @@ class PyABR(QtCore.QObject):
         self.acq_mode = mode
         self.Dock_Recording.raiseDock()
         self.app.processEvents()
+        self.PS = pystim3.PyStim(
+            required_hardware=self.config["required_hardware"],
+            ni_devicename=self.config["NI_device"],
+        )
         self.PS.reset_hardware()
         self.protocol = self.PR.get_current_protocol()  # be sure we have current protocol data
         self.TrialCounter = 0
@@ -475,7 +479,7 @@ class PyABR(QtCore.QObject):
         self.TrialTimer.timeout.emit()
         self.TrialTimer.start()
         # finally, load up the data and trigger the thread to start.
-        self.Presenter.setWaveforms(
+        self.Presenter.setWaveforms(  # new instance of pystim3 each time
             wave=self.wave_matrix, protocol=self.protocol, sound_presentation_class=self.PS
         )
 

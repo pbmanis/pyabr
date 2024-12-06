@@ -141,6 +141,8 @@ class Stimulus_Parameters:
     RP21_out_sampleFreq: float = 0.0
     RP21_in_sampleFreq: float = 0.0
     RP21_TriggerSource: str="B"
+    RZ5D_in_sampleFreq: float=24410.
+    RZ5D_out_sampleFreq: float=24410.
     soundcard_out_sampleFreq: float = def_soundcard_outputrate
     soundcard_in_sampleFreq: float = def_soundcard_inrate
     atten_left: float = 120.0
@@ -366,7 +368,7 @@ class PyStim:
         
         self.RP21_circuit = self.RP21_proj.load_circuit(self.RP21_rcxfile, "RP2")
         if acquisition_mode == "abr":
-            self.samp_cof_flag = 2  # set for 24 kHz
+            self.samp_cof_flag = 4  # set for 24 kHz
         elif acquisition_mode == "calibrate":
              self.samp_cof_flag = 5 
         else:
@@ -379,8 +381,8 @@ class PyStim:
             97656.25,
             195312.5,
         ]
-        if self.samp_cof_flag > 5:
-            self.samp_cof_flag = 5
+        if self.samp_cof_flag > 5 or self.samp_cof_flag < 0:
+            raise ValueError("RP2.1 sample rate flag is out of bounds: [0, 5]", self.samp_cof_flag)
         self.RP21_circuit.convert(self.samp_flist[self.samp_cof_flag], 'fs', 'nPer')
 
         # set the input and output sample frequencies to the same value
@@ -498,84 +500,62 @@ class PyStim:
 
         # if we are just using pyaudio (linux, MacOS), set it up now
         if "pyaudio" in self.State.hardware:
-            dur = len(wavel) / float(self.Stimulus.soundcard_out_sampleFreq)
-            self.Ndata = int(np.ceil((dur + postduration) *  self.Stimulus.soundcard_out_sampleFreq))
-            if self.audio is None:
-                self.audio = pyaudio.PyAudio()
-            else:
-                self.audio.terminate()
-                self.audio = pyaudio.PyAudio()
-            chunk = 1024
-            FORMAT = pyaudio.paFloat32
-            # CHANNELS = 2
-            CHANNELS = 1
-            if self.State.debugFlag:
-                print(f"pystim.play_sound: samplefreq: {self.Stimulus.soundcard_out_sampleFreq:.1f} Hz")
-            self.stream = self.audio.open(
-                format=FORMAT,
-                channels=CHANNELS,
-                rate=int(self.Stimulus.soundcard_out_sampleFreq),
-                output=True,
-                input=True,
-                frames_per_buffer=chunk,
-            )
-            wave = np.zeros(2 * len(wavel))
-            if len(wavel) != len(waver):
-                print(
-                    f"pystim.play_sound: L,R output waves are not the same length: L = {len(wavel):d}, R = {len(waver):d}")
-                return
-            (waver, clipr) = self.clip(waver, 20.0)
-            (wavel, clipl) = self.clip(wavel, 20.0)
-            wave[0::2] = waver
-            wave[1::2] = wavel  # order chosen so matches etymotic earphones on my macbookpro.
-            postdur = int(float(postduration * self.Stimulus.soundcard_in_sampleFreq))
+            self.play_audio(wavel, postduration)
 
-            write_array(self.stream, wave)
-            self.stream.stop_stream()
-            self.stream.close()
-            self.audio.terminate()
-            return
-
+        # set up waveforms for output on NIDAQ or RP21
         if "NIDAQ" in self.State.hardware:
             if self.State.NIDAQ_task is not None:
                 raise ValueError("NIDAQ task has not been released")
-                exit()
-            # print("Using NIDAQ")
-            ndata = len(wavel)
-            dur = postduration + ndata / float(self.Stimulus.NI_out_sampleFreq)
+            n_wave = len(wavel)
+            dur = postduration + n_wave / float(self.Stimulus.NI_out_sampleFreq)
             self.waveout = wavel
+            self.stimulus_points = int(dur/ float(self.Stimulus.NI_out_sampleFreq))
             # print("dur, postdur: ", dur, postduration, len(self.waveout), ndata, self.Stimulus.NI_out_sampleFreq)
+        elif "RP21" in self.State.hardware:
+            n_wave = len(wavel)
+            dur = postduration + n_wave / float(self.Stimulus.RP21_out_sampleFreq)
+            self.waveout = wavel
+            self.stimulus_points = int(dur/ float(self.Stimulus.RP21_out_sampleFreq))
+        elif "RZ5D" in self.State.hardware:
+            n_wave = len(wavel)
+            dur = postduration + n_wave / float(self.Stimulus.RZ5D_out_sampleFreq)
+            self.waveout = wavel
+            self.stimulus_points = int(dur/ float(self.Stimulus.RZ5D_out_sampleFreq))
+        else:
+            raise ValueError("No output device specified? ", self.State.hardware)
+        
+        if "RP21" in self.State.hardware:
+            self.acquisition_points = int(np.ceil((dur + postduration) * self.Stimulus.RP21_in_sampleFreq))
+        elif "RZ5D" in self.State.hardware:
+            self.acquisition_points = int(np.ceil((dur + postduration) * self.Stimulus.RZ5D_in_sampleFreq))
+        else:
+            raise ValueError("No input device specified? ", self.State.hardware)
 
-            if "RP21" in self.State.hardware:
-                self.Ndata = int(np.ceil((dur + postduration) * self.Stimulus.RP21_in_sampleFreq))
-                # print("RP:", self.Stimulus.RP21_in_sampleFreq, "Ndata = ", self.Ndata, "dur=", self.Ndata/self.Stimulus.RP21_in_sampleFreq)
-                self.RP21_circuit.set_tag("sampled_wave_n", self.Ndata)
-
-            if "PA5" in self.State.hardware:
-                # print("setting attns: ", attns)
-                self.setAttens(atten_left=attns[0], atten_right=attns[1])
+        if "PA5" in self.State.hardware:
+            # print("setting attns: ", attns)
+            self.setAttens(atten_left=attns[0], atten_right=attns[1])
 
             # the following call not only sets up the NIDAQ, but also starts the RP2.1
             # to trigger stimulation AND acquistion. When this returns, the
             # sampled data is in self.ch1 and self.ch2, along with a timebase.
 
-            self.prepare_NIDAQ(wavel, None, timeout=dur, re_armable=False)
+        self.acquire_with_devices(wavel, None, timeout=dur, re_armable=False)
 
-            if "PA5" in self.State.hardware:
-                self.setAttens()  # attenuators down (there is noise otherwise)
+        if "PA5" in self.State.hardware:
+            self.setAttens()  # attenuators down (there is noise otherwise)
 
-            if "RP21" in self.State.hardware:
-                # compute stimulus and recording waveforms
-                if "NIDAQ" in self.State.hardware:
-                    self.t_stim = np.linspace(
-                        0, len(wavel) / self.Stimulus.NI_out_sampleFreq, len(wavel)
-                    )
-                else:  # output is via RP21
-                    self.t_stim = np.linspace('sampled_wave',
-                        0, len(wavel) / self.Stimulus.RP21_out_sampleFreq, len(wavel)
-                    )   
-                self.t_record = np.linspace(0, float(self.Ndata) / self.Stimulus.RP21_in_sampleFreq,
-                                           self.Ndata)
+        if "RP21" in self.State.hardware:
+            # compute stimulus and recording waveforms
+            if "NIDAQ" in self.State.hardware:
+                self.t_stim = np.linspace(
+                    0, len(wavel) / self.Stimulus.NI_out_sampleFreq, len(wavel)
+                )
+            else:  # output is via RP21
+                self.t_stim = np.linspace('sampled_wave',
+                    0, len(wavel) / self.Stimulus.RP21_out_sampleFreq, len(wavel)
+                )   
+            self.t_record = np.linspace(0, float(self.acquisition_points) / self.Stimulus.RP21_in_sampleFreq,
+                                        self.acquisition_points)
 
             # print("Acquired from buffer: Ch1 shape: ", self.ch1.shape)
             self.ch1 = self.ch1.squeeze()
@@ -609,83 +589,9 @@ class PyStim:
         self.setAttens()
 
 
-    def load_and_arm_NIDAQ(self, re_arm:bool=False):
-        """
-        Initial setup of NI card for AO.
-        Creates a task for the card, sets parameters, clock rate,
-        and does setup if needed.
-        A callback is registered so that when the task is done, the
-        board is either released or re-armed for the next trigger.
-        The callback is used so that the task does not block the GUI.
-        """
-            
-        self.re_arm = re_arm
-        this_starttime = time.time()
-        failed = False
-        self.ch1 = None
-        with nidaqmx.task.Task("NI_DAC_out") as self.State.NIDAQ_task:
-            channel_name = f"/{self.State.NI_devicename:s}/ao0"
-            self.State.NIDAQ_task.ao_channels.add_ao_voltage_chan(  # can only do this once...
-                channel_name, min_val=-10.0, max_val=10.0, units=VoltageUnits.VOLTS
-            )
-            self.State.NIDAQ_task.timing.cfg_samp_clk_timing(
-                rate = self.Stimulus.NI_out_sampleFreq,
-                source="",
-                sample_mode=AcquisitionType.FINITE,
-                samps_per_chan=len(self.waveout),
-            )
+    
 
-            self.State.NIDAQ_task.triggers.start_trigger.cfg_dig_edge_start_trig(
-                trigger_source="/Dev1/PFI0",
-                trigger_edge=Edge.RISING,
-            )
-            self.State.NIDAQ_task.write(self.waveout)
-            playdur = len(self.waveout)/self.Stimulus.NI_out_sampleFreq
-            # print("playdur: ", playdur, self.Stimulus.NI_out_sampleFreq, len(self.waveout))
-            self.State.NIDAQ_task.start()
-            if "RP21" in self.State.hardware:
-                self.RP21_circuit.cset_tag('record_del_n', 1, 'ms', 'n')
-                # print("original ndata: ", self.Ndata)
-                n = int(self.Ndata/1024)
-                if self.Ndata % 1024 > 0:
-                    n += 1
-                self.Ndata = n * 1024
-                # print("new Ndata: ", self.Ndata)
-                self.RP21_circuit.set_tag("sampled_wave_n", self.Ndata)
-                recdur = self.Ndata / self.Stimulus.RP21_in_sampleFreq
-                self.RP21_circuit.cset_tag('record_dur_n', recdur, 's', 'n')
-                self.RP21_circuit.cset_tag('play_dur_n', playdur, 's', 'n')
-                self.databuffer = self.RP21_circuit.get_buffer('sampled_wave', 'r', )
-                # print(databuffer.n_slots, databuffer.n_samples, databuffer.size, databuffer.sample_time)
-
-                # print("RP21 buffer created, ndata:", self.Ndata, databuffer.n_samples, databuffer.size, databuffer.fs)
-                # doesn't come back ?
-                self.RP21_circuit.start(0.1)  # start, but wait a bit... 
-
-                # self.ch1 = databuffer.acquire_samples(self.Stimulus.RP21_TriggerSource, samples=self.Ndata,
-                #                                       trials=1, reset_read=False,
-                #                                       )
-                
-                self.ch1 = self.databuffer.acquire(self.Stimulus.RP21_TriggerSource, 'running', False)
-
-            while not self.State.NIDAQ_task.is_task_done():
-                now_time = time.time()
-                if now_time - this_starttime > 5.0:
-                    failed = True
-                    print("arming nidaq/task execution FAILED")
-                    break
-                else:
-                    # print("waiting on nidaq")
-                    time.sleep(0.1)
-            self.RP21_proj.trigger(self.Stimulus.RP21_TriggerSource, "low")
-
-            self.State.NIDAQ_task.stop()
-        self.State.NIDAQ_task = None
-        self.ch1 = self.databuffer.read(None)
-        self.RP21_circuit.stop()        
-        return True
-
-    def prepare_NIDAQ(self, wavel, waver=None, repetitions: int = 1, timeout: float = 1200.0, re_armable:bool=False):
+    def acquire_with_devices(self, wavel, waver=None, repetitions: int = 1, timeout: float = 1200.0, re_armable:bool=False):
         """
         Set up and initialize the NIDAQ card for output,
         then let it run and keep up with each task completion
@@ -701,13 +607,136 @@ class PyStim:
         (self.waveout, clipl) = self.clip(self.waveout, 10.0)  # clip the wave if it's >10V
         self.start_time = time.time()
         self.timeout = timeout
-        self.load_and_arm_NIDAQ(re_arm=re_armable)
+        self.load_and_arm(re_arm=re_armable)
+
+    def load_and_arm(self, re_arm:bool=False):
+        """
+        if NIDAQ: Initial setup of NI card for AO.
+        Creates a task for the card, sets parameters, clock rate,
+        and does setup if needed.
+        A callback is registered so that when the task is done, the
+        board is either released or re-armed for the next trigger.
+        The callback is used so that the task does not block the GUI.
+        """
+            
+        self.re_arm = re_arm
+        this_starttime = time.time()
+        failed = False
+        self.ch1 = None
+        if 'NIDAQ' not in self.State.hardware:
+            raise ValueError("Only NIDAQ for output at this time")
+        
+        with nidaqmx.task.Task("NI_DAC_out") as self.State.NIDAQ_task:
+            channel_name = f"/{self.State.NI_devicename:s}/ao0"
+            self.State.NIDAQ_task.ao_channels.add_ao_voltage_chan(  # can only do this once...
+                channel_name, min_val=-10.0, max_val=10.0, units=VoltageUnits.VOLTS
+            )
+            # self.State.NIDAQ_task.triggers.reference_trigger(max_num_trigs_to_detect = 1)
+            self.State.NIDAQ_task.timing.cfg_samp_clk_timing(
+                rate = self.Stimulus.NI_out_sampleFreq,
+                source="",
+                sample_mode=AcquisitionType.FINITE,
+                samps_per_chan=len(self.waveout),
+            )
+
+            self.State.NIDAQ_task.triggers.start_trigger.cfg_dig_edge_start_trig(
+                trigger_source="/Dev1/PFI0",
+                trigger_edge=Edge.RISING,
+            )
+            self.State.NIDAQ_task.write(self.waveout)
+            if "NIDAQ" in self.State.hardware:
+                playdur = len(self.waveout)/self.Stimulus.NI_out_sampleFreq
+                playdur_RP21 = len(self.waveout)/self.Stimulus.RP21_out_sampleFreq
+            elif "RP21" in self.State.hardware:
+                playdur = len(self.waveout)/self.Stimulus.RP21_out_sampleFreq
+
+            elif "RZ5D" in self.State.hardware:
+                playdur = len(self.waveout)/self.Stimulus.RZ5D_out_sampleFreq
+            else:
+                raise ValueError("no valid output device to load waveform")
+            # print("playdur: ", playdur, self.Stimulus.NI_out_sampleFreq, len(self.waveout))
+            self.State.NIDAQ_task.start()
+           # now we can configure the RP21
+            if "RP21" in self.State.hardware:
+                self.RP21_circuit.cset_tag('record_del_n', 2, 'ms', 'n')
+                # print("original acquisition points: ", self.acquisition_points)
+                n = int(self.acquisition_points/1024)
+                if self.acquisition_points % 1024 > 0:
+                    n += 1
+                self.acquisition_points = n * 1024
+                # print("new # acquisition points: ", self.acquisition_points)
+                self.RP21_circuit.set_tag("sampled_wave_n", self.acquisition_points)
+                recdur = self.acquisition_points / self.Stimulus.RP21_in_sampleFreq + (0.002/self.Stimulus.RP21_in_sampleFreq)
+                self.RP21_circuit.cset_tag('record_dur_n', recdur, 's', 'n')
+                self.RP21_circuit.cset_tag('play_dur_n', 1, 'ms', 'n')
+                self.databuffer = self.RP21_circuit.get_buffer('sampled_wave', 'r' )
+                # print(databuffer.n_slots, databuffer.n_samples, databuffer.size, databuffer.sample_time)
+
+                # print("RP21 buffer created, ndata:", self.acquisition_points, databuffer.n_samples, databuffer.size, databuffer.fs)
+                self.RP21_circuit.start(0.25)  # start, but wait a bit... 
+
+                # doesn't come back ?
+                # self.ch1 = self.databuffer.acquire_samples(self.Stimulus.RP21_TriggerSource, samples=self.acquisition_points,
+                #                                       trials=1, reset_read=False,
+                #                                       )
+                
+                self.ch1 = self.databuffer.acquire(self.Stimulus.RP21_TriggerSource, 'running', False)  # should not return until done
+ 
+                index = self.RP21_circuit.get_tag('sampled_wave_i')
+                nsamp = self.RP21_circuit.get_tag('sampled_wave_n')
+                rec_n = self.RP21_circuit.get_tag('record_dur_n')
+                play_n = self.RP21_circuit.get_tag('play_dur_n')
+                # print("Index, nsamp: ", index, nsamp)
+                # print("recn, playn: ", rec_n, play_n)
+                # now_time = time.time()
+                # index = self.RP21_circuit.get_tag('sampled_wave_i')
+                # while index < nsamp:
+                #     time.sleep(0.010)
+                #     if time.time() - now_time > 2.0:
+                #         break
+
+                #     index = self.RP21_circuit.get_tag('sampled_wave_i')
+                # self.ch1a = self.databuffer.read(None)
+                # print(self.ch1.shape, self.ch1a.shape)
+
+            while not self.State.NIDAQ_task.is_task_done():
+                now_time = time.time()
+                if now_time - this_starttime > 2.0:
+                    failed = True
+                    print("arming nidaq/task execution FAILED")
+                    break
+                else:
+                    # index = self.RP21_circuit.get_tag('sampled_wave_i')
+                    # print("rp21 index: ", index)
+                    # print("waiting on nidaq")
+                    time.sleep(0.05)
+
+            
+        index = self.RP21_circuit.get_tag('sampled_wave_i')
+        nsamp = self.RP21_circuit.get_tag('sampled_wave_n')
+        rec_n = self.RP21_circuit.get_tag('record_dur_n')
+        play_n = self.RP21_circuit.get_tag('play_dur_n')
+        # print("Index, nsamp: ", index, nsamp)
+        # print("recn, playn: ", rec_n, play_n)
+        # now wait for the rp2.1 to catch up? 
+        # now_time = time.time()
+        # while self.RP21_circuit.get_tag('sampled_wave_i') < nsamp:
+        #     time.sleep(0.010)
+        #     if time.time() - now_time > 2.0:
+        #         break
+        self.ch1 = self.databuffer.read(None)
+        print(self.ch1.shape)
+        self.RP21_circuit.stop()   
+
+        self.State.NIDAQ_task = None
+     
+        return True
 
     def retrieveRP21_inputs(self):
         if self.ch1 is None or self.ch1.shape[0] == 0:
             self.ch1 = self.databuffer.read(None)
 
-        print("retrieve inputs: ch1 shape: ", self.ch1.shape, self.Ndata)
+        print("retrieve inputs: ch1 shape: ", self.ch1.shape, self.acquisition_points)
         self.ch2 = np.zeros_like(self.ch1)
         return (self.ch1, self.ch2)
 
@@ -762,6 +791,45 @@ class PyStim:
             )
         return (data, clip)
 
+
+    def play_audio(self, postduration:float, wavel: np.ndarray): 
+        dur = len(wavel) / float(self.Stimulus.soundcard_out_sampleFreq)
+        self.acquisition_points = int(np.ceil((dur + postduration) *  self.Stimulus.soundcard_out_sampleFreq))
+        if self.audio is None:
+            self.audio = pyaudio.PyAudio()
+        else:
+            self.audio.terminate()
+            self.audio = pyaudio.PyAudio()
+        chunk = 1024
+        FORMAT = pyaudio.paFloat32
+        # CHANNELS = 2
+        CHANNELS = 1
+        if self.State.debugFlag:
+            print(f"pystim.play_sound: samplefreq: {self.Stimulus.soundcard_out_sampleFreq:.1f} Hz")
+        self.stream = self.audio.open(
+            format=FORMAT,
+            channels=CHANNELS,
+            rate=int(self.Stimulus.soundcard_out_sampleFreq),
+            output=True,
+            input=True,
+            frames_per_buffer=chunk,
+        )
+        wave = np.zeros(2 * len(wavel))
+        if len(wavel) != len(waver):
+            print(
+                f"pystim.play_sound: L,R output waves are not the same length: L = {len(wavel):d}, R = {len(waver):d}")
+            return
+        (waver, clipr) = self.clip(waver, 20.0)
+        (wavel, clipl) = self.clip(wavel, 20.0)
+        wave[0::2] = waver
+        wave[1::2] = wavel  # order chosen so matches etymotic earphones on my macbookpro.
+        postdur = int(float(postduration * self.Stimulus.soundcard_in_sampleFreq))
+
+        write_array(self.stream, wave)
+        self.stream.stop_stream()
+        self.stream.close()
+        self.audio.terminate()
+        return
 
 """
 the following was taken from #http://hlzr.net/docs/pyaudio.html
