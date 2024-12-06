@@ -84,7 +84,7 @@ if opsys in ["nt", "Windows"]:
         print("    nidaq, nidaqmx and nidaqmx.constants were imported ok.")
         print("\nTesting import of tdt.py")
         import tdt
-        print("    tdt.py was imported ok.")
+        print("    tdtpy was imported ok.")
         nidaq_available = True
     except:
         raise ImportError("Some required imports failed - check the system and the installation of the required packages")
@@ -210,15 +210,23 @@ class PyStim:
             if "NIDAQ" in self.State.required_hardware: #  and self.setup_nidaq():
                 self.State.hardware.append("NIDAQ")
                 # self.setup_nidaq()
+
+
+
             if "RP21" in self.State.required_hardware:
                 assert acquisition_mode in ["abr", "calibrate"]
                 print("looking for RP21")
 
                 if acquisition_mode == "abr":
-                    self.RP21_proj = tdt.DSPProject(interface="USB")
+                    print(dir(tdt))
+                    try:
+                        self.RP21_proj = tdt.DSPProject(interface="USB")
+                    except:
+                        raise ValueError("Unable to connect to device")
                     if self.setup_RP21(
                      # "c:\\TDT\\OpenEx\\MyProjects\\Tetrode\\RCOCircuits\\tone_search.rcx"
-                        "c:\\users\\experimenters\\desktop\\pyabr\\tdt\\abrs_v2.rcx",
+                        # "C:\\Users\\Experimenters\\Desktop\\pyabr\\tdt\\abrs_v2.rcx",
+                        "C:\\Users\pbmanis\\Desktop\\pyabr\\tdt\\abrs_v2.rcx",
                         acquisition_mode="abr"
                     ):
                         self.State.hardware.append("RP21")
@@ -236,8 +244,10 @@ class PyStim:
                
                 else:
                     raise ValueError(f"RP21 acquisition mode must be 'abr' or 'calibrate'; got: '{acquisition_mode:s}'")
+
             if "PA5" in self.State.required_hardware and self.setup_PA5():
                 self.State.hardware.append("PA5")
+
             if "RZ5D" in self.State.required_hardware and self.setup_RZ5D():
                 self.State.hardware.append("RZ5D")
         else:
@@ -331,7 +341,12 @@ class PyStim:
         devnum : int (default = 1)
             The device number to connect to for the attenuator
         """
-        self.PA5 = tdt.util.connect_pa5(interface="USB", device_id=1)
+        for i in range(10):
+            try:
+                self.PA5 = tdt.util.connect_pa5(interface="USB", device_id=i)
+            except:
+                print("failed: ", i)
+        exit()
         # self.PA5_2 = tdt.util.connect_pa5(interface="USB", device_id=1)
 
         # self.PA5 = win32com.client.Dispatch("PA5.x")

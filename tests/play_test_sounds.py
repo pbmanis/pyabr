@@ -45,7 +45,8 @@ def play(args):
     stimarg = args.stimtype
     plots = args.showplot
 
-    PS = pystim3.PyStim(required_hardware=["NIDAQ", "PA5", "RP21"])
+    # PS = pystim3.PyStim(required_hardware=["NIDAQ", "PA5", "RP21"])
+    PS = pystim3.PyStim(required_hardware=["PA5", "RP21"])
 
     cf = 5000.
     Fs = pystim3.Stimulus_Parameters.NI_out_sampleFreq  # sample frequency
