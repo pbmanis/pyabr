@@ -12,9 +12,10 @@ toml
 # Specific requirements
 nidaqmx
 matplotlib>=3.9
+pandas
 seaborn
 nose==1.3.7
-numpy>1.19.5
+numpy<1.2
 psutil>=6.1.0
 pyparsing==2.4.0
 resampy>=0.4
@@ -27,7 +28,7 @@ pyaudio  # this will have to be done manually
 pyqt6>=6.7
 pyqt6-sip>=13.8
 pyqtgraph>=0.13.7
-tdt
+tdtpy
 # pywin32
 
 # -e git://github.com/pbmanis/pylibrary.git#egg=pylibrary

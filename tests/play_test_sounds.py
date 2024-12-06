@@ -6,7 +6,7 @@ This script tests the sound waveform generator for a variety of sounds
 """
 import argparse
 from pathlib import Path
-import sys
+import time
 import wave  # pythom module
 from collections import OrderedDict
 
@@ -18,7 +18,7 @@ from matplotlib import pyplot as mpl
 
 import src.sound as sound  # for waveform generation
 import src.PySounds as PySounds  # for access to hardware
-import src.pystim as pystim
+import src.pystim3 as pystim3
 
 from nidaq import cheader
 
@@ -45,11 +45,11 @@ def play(args):
     stimarg = args.stimtype
     plots = args.showplot
 
-    PS = pystim.PyStim(required_hardware=["NIDAQ", "PA5", "RP21"])
+    PS = pystim3.PyStim(required_hardware=["NIDAQ", "PA5", "RP21"])
 
-    cf = 2e3
-    Fs = pystim.Stimulus_Parameters.out_sampleFreq  # sample frequency
-    level = 80.0
+    cf = 5000.
+    Fs = pystim3.Stimulus_Parameters.NI_out_sampleFreq  # sample frequency
+    level = 100.0
     seed = 34978
     fmod = 20.0
     dmod = 20.0
@@ -152,10 +152,10 @@ def play(args):
         elif stim in ["pip", "pipmod", "noise", "noisemod"]:
             soundwave = stims[stim][1](
                 rate=Fs,
-                duration=2.0,
+                duration=0.4,
                 f0=cf,
                 dbspl=level,
-                pip_duration=1.8,
+                pip_duration=0.1,
                 pip_start=[10e-3],
                 ramp_duration=2.5e-3,
                 fmod=fmod,
@@ -232,6 +232,7 @@ def play(args):
             fig.colorbar(pcm, ax=ax[2], extend="max")
             # Pxx, freqs, bins, im = mpl.specgram(wave.sound, NFFT=nfft, Fs=Fs, noverlap=nfft/4)
             mpl.show()
+        return PS
 
     # if plots and sys.flags.interactive == 0:
     #      pg.QtGui.QApplication.exec_()
@@ -249,7 +250,18 @@ def main():
     parser.add_argument("-p", "--plot", dest="showplot", action="store_true", default=False,
         help="show plots of waveforms")
     args = parser.parse_args()
-    play(args)
+    app = pg.mkQApp("test sounds")
+    win = pg.GraphicsLayoutWidget(show=True, title="test")
+    win.resize(800, 600)
+
+    symbols = ["o", "s", "t", "d", "+", "x"]
+    # win.setBackground("w")
+    p1 = win.addPlot(title=f"signal")
+    for i in range(1, 5):
+        PS = play(args)
+        time.sleep(0.1)
+        p1.plot(PS.t_record[:PS.ch1.shape[0]], PS.ch1+0.1*i, pen=pg.mkPen(pg.intColor(i)))
+    pg.exec()
 
 if __name__ == "__main__":
     main()

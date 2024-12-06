@@ -5,7 +5,7 @@ Calibrations
 import numpy as np
 from pathlib import Path
 from typing import Union
-import src.pystim as PS
+import src.pystim3 as PS
 import pyqtgraph as pg
 import pyqtgraph.configfile as configfile
 from pyqtgraph.Qt import QtGui

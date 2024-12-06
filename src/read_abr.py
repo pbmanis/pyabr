@@ -5,7 +5,7 @@ import pathlib
 from pathlib import Path
 import numpy as np
 import pyqtgraph as pg
-from pylibrary.plotting import plothelpers as PH
+import plothelpers as PH
 import src.read_calibration as read_calibration
 
 use_matplotlib = False

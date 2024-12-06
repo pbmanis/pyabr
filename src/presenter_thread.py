@@ -9,7 +9,7 @@ from pyqtgraph.Qt.QtCore import QObject, pyqtSignal, pyqtSlot
 
 from src import convert_nested_ordered_dict as convert_nested_ordered_dict
 from src import protocol_reader as protocol_reader
-from src import pystim as pystim
+from src import pystim3 as pystim3
 from src import sound as sound  # for waveform generation
 
 
@@ -120,6 +120,7 @@ class Presenter(QObject):  # (QtCore.QRunnable):
 
     def retrieve_data(self):
         res = self.sound_class.retrieveRP21_inputs()
+        print("presenter retrieve: ", res[0].shape)
         self.chdata = np.array(res)
         # self.ch2_data = np.array(res)
         self.signal_data_ready.emit(self.chdata, self.wave_counter, self.repetition_counter)

@@ -28,7 +28,7 @@ from pyqtgraph.Qt.QtCore import QObject, pyqtSignal, pyqtSlot
 from src import convert_nested_ordered_dict as convert_nested_ordered_dict
 from src import presenter_thread as presenter_thread
 from src import protocol_reader as protocol_reader
-from src import pystim as pystim
+from src import pystim3 as pystim3
 from src import wave_generator as wave_generator
 from src import sound as sound  # for waveform generation
 from src.build_parametertree import build_parametertree
@@ -61,7 +61,7 @@ class PyABR(QtCore.QObject):
         atexit.register(self.quit)
         # get the configuration file:
         self.config = configfile.readConfigFile(configfilename)
-        self.PS = pystim.PyStim(
+        self.PS = pystim3.PyStim(
             required_hardware=self.config["required_hardware"],
             ni_devicename=self.config["NI_device"],
         )
@@ -426,7 +426,7 @@ class PyABR(QtCore.QObject):
         """
         thin wrapper for the wavegenerator waveofmr maker.
         """
-        self.WG.setup(protocol=self.protocol, frequency=1000000, config=self.config)  # output rate
+        self.WG.setup(protocol=self.protocol, frequency=self.PS.Stimulus.NI_out_sampleFreq, config=self.config)  # output rate
         self.WG.make_waveforms(wavetype=wavetype, dbspls=dbspls, frequencies=frequencies)
         self.wave_matrix = self.WG.wave_matrix
 
@@ -434,8 +434,8 @@ class PyABR(QtCore.QObject):
 
     def make_and_plot(self, n: int, wavetype: str, dbspls: list, frequencies: list):
         self.make_waveforms(wavetype=wavetype, dbspls=dbspls, frequencies=frequencies)
-        for k in list(self.wave_matrix.keys()):
-            print(k, np.max(self.wave_matrix[k]["sound"]))
+        # for k in list(self.wave_matrix.keys()):
+        #     print(k, np.max(self.wave_matrix[k]["sound"]))
         self.plot_stimulus_wave(n)
 
     def acquire(self, mode: str = "test"):
@@ -510,10 +510,12 @@ class PyABR(QtCore.QObject):
             self.plot_ABR_Average.clear()
         # self.t_stim = np.arange(0, len(self.ch1_data)/self.PS.Stimulus.out_sampleFreq, 1./self.PS.Stimulus.out_sampleFreq )
         _, self.sfin, self.sfout = self.PS.getHardware()
-        self.t_record = np.arange(0, len(self.ch1_data) / self.sfin, 1.0 / self.sfin)
+        print("ch1 data: ", self.ch1_data.shape)
+        self.t_record = np.linspace(0, len(self.ch1_data) / self.sfin, self.ch1_data.shape[0])
         if (self.raw_clear_N > 0) and ((self.TrialCounter % self.raw_clear_N) == 0):
             self.plot_ABR_Raw.clear()
             self.plot_ABR_Raw.setXRange(0, np.max(self.t_record))
+
         if self.TrialCounter > 0:
             self.plot_ABR_Raw.plot(self.t_record, self.ch1_data, pen=pg.mkPen(pg.intColor(self.TrialCounter, hues=10, values=10)))
         else:
