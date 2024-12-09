@@ -183,13 +183,11 @@ class Presenter(QObject):  # (QtCore.QRunnable):
                 self._running = False
                 return
             wave = self.wave_matrix[self.wavekeys[self.wave_counter]]["sound"]
-            sfout = self.wave_matrix[self.wavekeys[self.wave_counter]]["rate"]
             attn = self.wave_matrix[self.wavekeys[self.wave_counter]]["attenuation"][0]
 
             self.sound_class.play_sound(
                 wave,
                 wave,
-                samplefreq=sfout,
                 attns=[attn, attn],  # set both attenuators
             )
             self.retrieve_data()
@@ -207,10 +205,9 @@ class Presenter(QObject):  # (QtCore.QRunnable):
             """
 
             wave = self.wave_matrix[self.wavekeys[0]]["sound"]
-            sfout = self.wave_matrix[self.wavekeys[0]]["rate"]
             attn = self.wavekeys[self.wave_counter][1]  # ]["attenuation"][0]
             self.sound_class.play_sound(
-                wave, wave, samplefreq=sfout, attns=[attn, attn]
+                wave, wave,attns=[attn, attn]
             )
             self.retrieve_data()
 
