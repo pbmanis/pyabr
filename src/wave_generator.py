@@ -11,7 +11,7 @@ import src.read_calibration as read_calibration
 class WaveGenerator:
     def __init__(self, caldata):
         self.protocol = None
-        self.frequency = 100000.0
+        self.frequency = 500000.0
         self.use_attens = True
         self.wave_matrix = {}
         self.get_protocols()
@@ -19,7 +19,7 @@ class WaveGenerator:
         self.multi_attn_flatten_spectra = False  # try to flatten using
             # mutiple attenaution levels and less DAC dynamic range
 
-    def setup(self, protocol: Union[str, Path] = None, frequency: float = 100000.0,
+    def setup(self, protocol: Union[str, Path] = None, frequency: float = 500000.0,
               config:dict=None):
         self._set_protocol(protocol)
         self._set_output_frequency(frequency)
@@ -255,7 +255,7 @@ class WaveGenerator:
                 wm = self.wave_matrix[("interleaved_plateau", attenuator)]
                 wm["sound"] = wm["sound"]*full_scale
                 wm['attenuation'] = wm['attenuation'] + db_diff
-                attenuator = 0
+                # attenuator = 0
                 self.wave_matrix[("interleaved_plateau", attenuator)] = wm
                 print("attenuator: ", attenuator)
                 for i in range(len(wm["frequencies"])):
@@ -430,6 +430,6 @@ if __name__ == "__main__":
 
     WG = WaveGenerator()
 
-    WG.setup(protocol=WG.stim, frequency=1000000)
+    WG.setup(protocol=WG.stim, frequency=500000)
     WG.make_waveforms(WG.protocol["protocol"]["stimulustype"])
     WG.plot_stimulus_wave()
