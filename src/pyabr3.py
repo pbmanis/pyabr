@@ -92,7 +92,7 @@ class PyABR(QtCore.QObject):
 
         self.TrialTimer = pg.QtCore.QTimer()
         self.TrialTimer.timeout.connect(self.recurring_timer)
-        self.TrialCounter = 0
+        self.TrialCounter = 1
 
         self.threadpool = QtCore.QThreadPool()
         self.Presenter = presenter_thread.Presenter(parameters=self)
@@ -353,11 +353,14 @@ class PyABR(QtCore.QObject):
         self.caldata = read_calibration.get_calibration_data(calfile)
         read_calibration.plot_calibration(self.caldata)
 
-    def plot_stimulus_wave(self, n: int = 0):
+    def plot_stimulus_wave(self, n: int = 0): # , n_sample_delay:int=65):
         first_sound = self.wave_matrix[list(self.wave_matrix.keys())[n]]
+        # samp_delay = n_sample_delay/first_sound["rate"]
+        # print("nsam del: ", n_sample_delay, "samp_delay: ", samp_delay)
         t = np.arange(0, len(first_sound["sound"]) / float(first_sound["rate"]), 1.0 / first_sound["rate"])
         if len(t) > len(first_sound["sound"]):
             t = t[:len(first_sound["sound"])]
+        t = t + 750e-6  # measured delay added in circuit in pystim3.abr
         if (self.raw_clear_N > 0) and ((n % self.raw_clear_N) == 0):
             self.stimulus_waveform.clear()
             self.stimulus_waveform.setXRange(0, np.max(t))
@@ -430,8 +433,6 @@ class PyABR(QtCore.QObject):
         self.WG.make_waveforms(wavetype=wavetype, dbspls=dbspls, frequencies=frequencies)
         self.wave_matrix = self.WG.wave_matrix
 
-
-
     def make_and_plot(self, n: int, wavetype: str, dbspls: list, frequencies: list):
         self.make_waveforms(wavetype=wavetype, dbspls=dbspls, frequencies=frequencies)
         # for k in list(self.wave_matrix.keys()):
@@ -458,7 +459,7 @@ class PyABR(QtCore.QObject):
         )
         self.PS.reset_hardware()
         self.protocol = self.PR.get_current_protocol()  # be sure we have current protocol data
-        self.TrialCounter = 0
+        self.TrialCounter = 1
         flist = self.protocol["stimuli"]["freqlist"]
         if self.protocol["protocol"]["stimulustype"] == "click":
             if len(flist) == 0:
@@ -503,33 +504,28 @@ class PyABR(QtCore.QObject):
                 rng.standard_normal(self.PS.Ndata) * 1e-6,
                 rng.standard_normal(self.PS.Ndata) * 1e-6,
             ]
-        self.ch1_data = np.array(chdata[0]).T
+        self.ch1_data = np.array(chdata[0])
         # self.ch2_data = np.array(ch2[0]).T
-        if self.TrialCounter == 0:
+        if self.TrialCounter == 1:
             self.summed_buffer = self.ch1_data
-        else:
-            self.summed_buffer += self.ch1_data
-        if self.TrialCounter == 0:
             self.plot_ABR_Raw.clear()
             self.plot_ABR_Average.clear()
-        # self.t_stim = np.arange(0, len(self.ch1_data)/self.PS.Stimulus.out_sampleFreq, 1./self.PS.Stimulus.out_sampleFreq )
+        else:
+            self.summed_buffer = self.summed_buffer + self.ch1_data
+        
         _, self.sfin, self.sfout = self.PS.getHardware()
-        print("ch1 data: ", self.ch1_data.shape)
         self.t_record = np.linspace(0, len(self.ch1_data) / self.sfin, self.ch1_data.shape[0])
-        if (self.raw_clear_N > 0) and ((self.TrialCounter % self.raw_clear_N) == 0):
+        if (self.raw_clear_N > 0) and (((self.TrialCounter-1) % self.raw_clear_N) == 0):
             self.plot_ABR_Raw.clear()
             self.plot_ABR_Raw.setXRange(0, np.max(self.t_record))
 
-        if self.TrialCounter > 0:
-            self.plot_ABR_Raw.plot(self.t_record, self.ch1_data, pen=pg.mkPen(pg.intColor(self.TrialCounter, hues=10, values=10)))
-        else:
-            self.plot_ABR_Raw.plot(self.t_record, self.ch1_data, pen=pg.mkPen("w", width=2))
-
-        self.TrialCounter = self.TrialCounter + 1
+        self.plot_ABR_Raw.plot(self.t_record, self.ch1_data, pen=pg.mkPen(pg.intColor(self.TrialCounter-1, hues=10, values=10)))
+        self.plot_ABR_Raw.setYRange(-15, 15)
+ 
         self.plot_ABR_Average.plot(
             self.t_record, self.summed_buffer / float(self.TrialCounter), pen=pg.mkPen("g")
         )
-    
+        self.TrialCounter += 1    
 
         if self.acq_mode == "test":
             return
@@ -541,11 +537,8 @@ class PyABR(QtCore.QObject):
                     subject_data[childs.name()] = childs.value()
         # now assemble data and save it
         write_time = datetime.datetime.now()
-        # print(dir(self.wave_matrix))
         wave_copy = copy.deepcopy(self.wave_matrix)
         for k in wave_copy.keys():
-            # print(k, dir(wave_copy[k]))
-            # print(wave_copy[k].keys())
             wave_copy[k]["sound"] = {}
         out_data = {
             "subject_data": subject_data,
