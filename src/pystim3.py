@@ -236,7 +236,6 @@ class PyStim:
                 print("looking for RP21")
 
                 if acquisition_mode == "abr":
-                    print(dir(tdt))
                     try:
                         self.RP21_proj = tdt.DSPProject(interface="USB")
                     except:
@@ -490,6 +489,7 @@ class PyStim:
         self.stim_dur = postduration + nstim_wave / float(out_sampleFreq)
         self.t_stim = np.linspace(0, nstim_wave / out_sampleFreq, nstim_wave)
         self.stimulus_points = int(self.stim_dur / float(out_sampleFreq))
+        print("Out sample computed")
 
 
     def _update_output_points(self, out_sampleFreq:float):
@@ -553,6 +553,7 @@ class PyStim:
         self.stim_dur = None
         self.rec_dur = None
         if "NIDAQ" in self.State.hardware:
+            # print("***** NIDAQ ******")
             if self.State.NIDAQ_task is not None:
                 raise ValueError("NIDAQ task has not been released")
             self._compute_out_sampling_info(
@@ -564,10 +565,11 @@ class PyStim:
             # print("dur, postdur: ", dur, postduration, len(self.waveout), ndata, self.Stimulus.NI_out_sampleFreq)
         else:
             self.t_stim = np.linspace(
-                "sampled_wave", 0, len(wavel) / self.Stimulus.RP21_out_sampleFreq, len(wavel)
+                0, len(wavel) / self.Stimulus.RP21_out_sampleFreq, len(wavel)
             )
 
         if "RP21" in self.State.hardware:
+            # print("***** RP21 ****** ")
             # get input sampling, and adjust the output array as well
             self._compute_in_sampling_info(in_sampleFreq=self.Stimulus.RP21_in_sampleFreq,
                                            out_sampleFreq=self.Stimulus.NI_out_sampleFreq)
@@ -588,7 +590,7 @@ class PyStim:
             raise ValueError("IO output devices not recognized? ", self.State.hardware)
         if self.rec_dur is None:
             return ValueError("IO input devices not recognized", self.State.hardware)
-        print("stim_dur, rec_dur: ", self.stim_dur, self.rec_dur)
+        # print("stim_dur, rec_dur: ", self.stim_dur, self.rec_dur)
 
         if "PA5" in self.State.hardware:
             self.setAttens(atten_left=attns[0], atten_right=attns[1])
@@ -654,7 +656,6 @@ class PyStim:
 
         self.re_arm = re_arm
         this_starttime = time.time()
-        failed = False
         self.ch1 = None
         if "NIDAQ" not in self.State.hardware:
             raise ValueError("Only use NIDAQ for output at this time")
