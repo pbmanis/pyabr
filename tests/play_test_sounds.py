@@ -197,7 +197,7 @@ def play(args):
 
         print(("Playing %s" % stim))
         print("sound max V: ", np.max(soundwave.sound))
-        PS.play_sound(soundwave.sound, soundwave.sound, Fs)
+        PS.play_sound(wavel=soundwave.sound, waver=soundwave.sound)
 
         if plots:  # make one graph for each waveform requested
             fig, ax = mpl.subplots(3, 1, figsize=(8, 10))
