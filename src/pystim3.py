@@ -228,12 +228,19 @@ class PyStim:
             if "NIDAQ" in self.State.required_hardware:  #  and self.setup_nidaq():
                 self.State.hardware.append("NIDAQ")
                 # self.setup_nidaq()
+
+
+
             if "RP21" in self.State.required_hardware:
                 assert acquisition_mode in ["abr", "calibrate"]
                 print("looking for RP21")
 
                 if acquisition_mode == "abr":
-                    self.RP21_proj = tdt.DSPProject(interface="USB")
+                    print(dir(tdt))
+                    try:
+                        self.RP21_proj = tdt.DSPProject(interface="USB")
+                    except:
+                        raise ValueError("Unable to connect to device")
                     if self.setup_RP21(
                         # "c:\\TDT\\OpenEx\\MyProjects\\Tetrode\\RCOCircuits\\tone_search.rcx"
                         "c:\\users\\experimenters\\desktop\\pyabr\\tdt\\abrs_v2.rcx",
@@ -258,6 +265,7 @@ class PyStim:
                     )
             if "PA5" in self.State.required_hardware and self.setup_PA5():
                 self.State.hardware.append("PA5")
+
             if "RZ5D" in self.State.required_hardware and self.setup_RZ5D():
                 self.State.hardware.append("RZ5D")
         else:

@@ -11,14 +11,12 @@ import atexit
 import datetime
 import copy
 import pickle
-import pprint
 import sys
 import time
 from pathlib import Path
 
 import numpy as np
 import pyqtgraph as pg
-import scipy.signal
 from pyqtgraph import configfile
 from pyqtgraph import dockarea as PGD
 from pyqtgraph import reload as reload

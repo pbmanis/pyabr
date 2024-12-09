@@ -1,5 +1,44 @@
+pyabr
+=====
+
+A python program to do abrs with tdt systems and an NI DAC.
+
+Installation (Windows only)
+===========================
+
+Install Python3.12 from the python.org site (don't use the Microsoft site)
+Install tdt drivers from TDT (rpsvdx)
+Install NIDAQ-mx (even if you are not using it!)
+Install the active-x drivers from TDT (password: spider)
+
+Run the installation script to create a virtual environment:
+in the bash (git bash), run:
+
+`
+$ ./make_env.bat
+`
+
+Then activate the environment:
+
+`
+pyabr_venv\Scripts\activate
+`
+
+Run the test program:
+
+To play a tone pip:
+
+`
+python tests/play_test_sounds.py pip
+`
+
+
+
+Included modules
+================
+
 pysounds
-========
+--------
 
 A set of modules that provide auditory stimulus generation, including hardware control.
 
