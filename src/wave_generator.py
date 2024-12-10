@@ -32,7 +32,7 @@ class WaveGenerator:
     def _set_output_frequency(self, frequency: float):
         self.sfout = frequency
 
-    def compute_attn_db_for_dbspl(self, freq, dBSPL):
+    def compute_attn_db_for_dbspl(self, freq, dBSPL, max_spl:float=0.):
         """compute_attn_for_dbspl
         based on the current calibration, compute the attenuation
         required for a given frequency to appear at the
@@ -191,15 +191,10 @@ class WaveGenerator:
                 n = 0
                 dbref = 94.0
                 attenuator = 120.
+                max_spl = np.max(dbs)
                 for j, dbspl_nominal in enumerate(dbs):
-                    # dbspl, attenuator = self.adjust_dbspl(dbspl_nominal)  # pick attenuation to put adjusted db in range
-                    # print(f"Nominal dBSPL: {dbspl_nominal:6.1f}, dbspl adjusted: {dbspl:6.1f}, attenuator: {attenuator:6.1f}")
-                    # if attenuator not in self.attenuatorlist:
-                    #     new_attn = True
-                    # else:
-                    #     new_attn = False
                     for i, frequency in enumerate(freqs):
-                        dbattn, maxdBSPL = self.compute_attn_db_for_dbspl(frequency, dbspl_nominal)     
+                        dbattn, maxdBSPL = self.compute_attn_db_for_dbspl(frequency, dbspl_nominal, max_spl)     
                         atten_f = dbattn[0]  # single frequency
                         if atten_f < 0:
                             raise ValueError(f"Cannot reach {dbspl_nominal} at {frequency} Hz (requires attenuation < 0 db: {atten_f:6.1f})")
