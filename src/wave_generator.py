@@ -190,7 +190,7 @@ class WaveGenerator:
                 self.pip_durations = []
                 n = 0
                 dbref = 94.0
-                attenuator = 0.
+                attenuator = 120.
                 for j, dbspl_nominal in enumerate(dbs):
                     # dbspl, attenuator = self.adjust_dbspl(dbspl_nominal)  # pick attenuation to put adjusted db in range
                     # print(f"Nominal dBSPL: {dbspl_nominal:6.1f}, dbspl adjusted: {dbspl:6.1f}, attenuator: {attenuator:6.1f}")
@@ -199,8 +199,13 @@ class WaveGenerator:
                     # else:
                     #     new_attn = False
                     for i, frequency in enumerate(freqs):
-                        dbattn, maxdBSPL = self.compute_attn_db_for_dbspl(frequency, dbspl_nominal)                            
+                        dbattn, maxdBSPL = self.compute_attn_db_for_dbspl(frequency, dbspl_nominal)     
                         atten_f = dbattn[0]  # single frequency
+                        if atten_f < 0:
+                            raise ValueError(f"Cannot reach {dbspl_nominal} at {frequency} Hz (requires attenuation < 0 db: {atten_f:6.1f})")
+                        elif atten_f < attenuator:
+                            attenuator = atten_f   
+
                         maxdBSPL_f = maxdBSPL[0]  # single level
                         print(f"    Adjusted atten at fr: {frequency:7.1f}, attn: {atten_f:6.1f}", end=" ")
                         # if dbattn < 0:
