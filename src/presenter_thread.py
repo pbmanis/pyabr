@@ -120,7 +120,7 @@ class Presenter(QObject):  # (QtCore.QRunnable):
 
     def retrieve_data(self):
         res = self.sound_class.retrieveRP21_inputs()
-        print("presenter retrieve: ", res[0].shape)
+        # print("presenter retrieve: ", res[0].shape)
         self.chdata = np.array(res)
         # self.ch2_data = np.array(res)
         self.signal_data_ready.emit(self.chdata, self.wave_counter, self.repetition_counter)
@@ -204,8 +204,10 @@ class Presenter(QObject):  # (QtCore.QRunnable):
             same as the attenuation value.
             """
 
+            attn = np.min([w[1] for w in self.wave_matrix.keys()])
             wave = self.wave_matrix[self.wavekeys[0]]["sound"]
-            attn = self.wavekeys[self.wave_counter][1]  # ]["attenuation"][0]
+            # print("wave keys: ", self.wavekeys)
+            # attn = self.wavekeys[self.wave_counter][1]  # ]["attenuation"][0]
             self.sound_class.play_sound(
                 wave, wave,attns=[attn, attn]
             )
