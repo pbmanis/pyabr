@@ -197,7 +197,7 @@ class PyStim:
         self.find_hardware(
             acquisition_mode=acquisition_mode
         )  # look for the required hardware and make sure we can talk to it.
-
+        self.trueFreq = None
         self.ch1 = None  # These will be arrays to receive the a/d sampled data
         self.ch2 = None
         self.audio = None  # pyaudio object  - get later
@@ -489,7 +489,6 @@ class PyStim:
         self.stim_dur = postduration + nstim_wave / float(out_sampleFreq)
         self.t_stim = np.linspace(0, nstim_wave / out_sampleFreq, nstim_wave)
         self.stimulus_points = int(self.stim_dur / float(out_sampleFreq))
-        print("Out sample computed")
 
 
     def _update_output_points(self, out_sampleFreq:float):
