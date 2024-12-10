@@ -507,7 +507,7 @@ class PyABR(QtCore.QObject):
         if self.TrialCounter == 1:
             self.summed_buffer = self.ch1_data
             self.plot_ABR_Raw.clear()
-            self.plot_ABR_Average.clear()
+
         else:
             self.summed_buffer = self.summed_buffer + self.ch1_data
         
@@ -518,8 +518,9 @@ class PyABR(QtCore.QObject):
             self.plot_ABR_Raw.setXRange(0, np.max(self.t_record))
 
         self.plot_ABR_Raw.plot(self.t_record, self.ch1_data, pen=pg.mkPen(pg.intColor(self.TrialCounter-1, hues=10, values=10)))
-        self.plot_ABR_Raw.setYRange(-15, 15)
+        # self.plot_ABR_Raw.setYRange(-15, 15)
  
+        self.plot_ABR_Average.clear()
         self.plot_ABR_Average.plot(
             self.t_record, self.summed_buffer / float(self.TrialCounter), pen=pg.mkPen("g")
         )
