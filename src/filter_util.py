@@ -207,9 +207,9 @@ class Utility:
         NPole: int = 8,
         bidir: bool = False,
     ) -> np.ndarray:
-        flpf = float(HPF)
+        fhpf = float(HPF)
         sf = float(samplefreq)
-        wn = [flpf / (sf / 2.0)]
+        wn = [fhpf / (sf / 2.0)]
         b, a = scipy.signal.bessel(NPole, wn, btype="high", output="ba")
         # zi = scipy.signal.lfilter_zi(b, a)
         if bidir:
