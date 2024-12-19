@@ -1,8 +1,10 @@
 import pickle
+import datetime
 import matplotlib.pyplot as mpl
 import platform
 import pathlib
 from pathlib import Path
+from pylibrary.tools import cprint as CP
 from typing import Union
 import numpy as np
 import pyqtgraph as pg
@@ -10,9 +12,11 @@ import plothelpers as mpl_PH
 import src.read_calibration as read_calibration
 import src.filter_util as filter_util
 import src.parse_ages as PA
+import src.read_abr4 as read_abr4
 
 use_matplotlib = True
 from pylibrary.plotting import plothelpers as PH
+from matplotlib.backends.backend_pdf import PdfPages
 
 # Check the operating system and set the appropriate path type
 if platform.system() == "Windows":
@@ -27,8 +31,12 @@ class AnalyzeABR:
         self.gain = 1e4
         self.fsamp = 24414.0625
         self.FILT = filter_util.Utility()
+        self.frequencies = []
+        self.hide_treatment = False
 
         # 24414.0625
+    def set_hide_treatment(self, hide_treatment: bool):
+        self.hide_treatment = hide_treatment
 
     def read_abr_file(self, fn):
         with open(fn, "rb") as fh:
@@ -36,6 +44,13 @@ class AnalyzeABR:
             self.caldata = d["calibration"]
             self.fsamp = d["record_frequency"]
             self.fsamp = self.check_fsamp(d)
+            # Trim the data array to remove the delay to the stimulus.
+            # to be consistent with the old ABR4 program, we leave
+            # the first 1 msec prior to the stimulus in the data array.
+            delay = float(d["protocol"]["stimuli"]["delay"])
+            i_delay = int((delay - 0.001) * self.fsamp)
+            # print("delay: ", delay, i_delay)
+            d["data"] = d["data"][i_delay:]
         return d
 
     def show_calibration(self, fn):
@@ -132,7 +147,9 @@ class AnalyzeABR:
         dBSPL_corrected = dBSPL[0] - attn
         return dBSPL_corrected
 
-    def average_within_traces(self, fd, i, protocol, date, high_pass_filter: Union[float, None] = None):
+    def average_within_traces(
+        self, fd, i, protocol, date, high_pass_filter: Union[float, None] = None
+    ):
         # i is the index into the acquisition series. There is one file for each repetition of each condition.
         # the series might span a range of frequencies and intensities; these are
         # in the protocol:stimulus dictionary (dblist, freqlist)
@@ -142,18 +159,23 @@ class AnalyzeABR:
         # The returned data is the average of the responses across the nreps for this (the "ith") stimulus condition
         stim_type = str(Path(fd).stem)
         print("Stim type: ", stim_type)
-        if stim_type.startswith("tones"):
+        print("Protocol: ", protocol)
+        if stim_type.lower().startswith("tone"):
             name = "tonepip"
-        elif stim_type.startswith("click"):
+        elif stim_type.lower().startswith("interleaved"):
+            name = "interleaved_plateau"
+        elif stim_type.lower().startswith("click"):
             name = "click"
         nreps = protocol["stimuli"]["nreps"]
         rec = protocol["recording"]
 
         nreps = protocol["stimuli"]["nreps"]
-        delay = protocol["stimuli"]["delay"]
-        dur = 0.010
+        missing_reps = []
         for n in range(nreps):  # loop over the repetitions for this specific stimulus
             fn = f"{date}_{name}_{i:03d}_{n+1:03d}.p"
+            if not Path(fd, fn).is_file():
+                missing_reps.append(n)
+                continue
             d = self.read_abr_file(Path(fd, fn))
             if n == 0:
                 data = d["data"]
@@ -161,10 +183,14 @@ class AnalyzeABR:
                 data += d["data"]
             if n == 0:
                 tb = np.linspace(0, len(data) / self.fsamp, len(data))
-        data = data / nreps
+        if len(missing_reps) > 0:
+            CP.cprint("r", f"Missing {len(missing_reps)} reps for {name} {i}", "red")
+        data = data / (nreps - len(missing_reps))
         if high_pass_filter is not None:
             print("average within traces hpf: ", high_pass_filter, self.fsamp)
-            data = self.FILT.SignalFilter_HPFButter(data, high_pass_filter, self.fsamp, NPole=4, bidir=True)
+            data = self.FILT.SignalFilter_HPFButter(
+                data, high_pass_filter, self.fsamp, NPole=4, bidir=True
+            )
         # tile the traces.
         # first interpolate to 100 kHz
         # If you don't do this, the blocks will precess in time against
@@ -184,7 +210,9 @@ class AnalyzeABR:
         tb = tb[:one_response]
         return sub_array, tb
 
-    def average_across_traces(self, fd, i, protocol, date, high_pass_filter: Union[float, None] = None):
+    def average_across_traces(
+        self, fd, i, protocol, date, high_pass_filter: Union[float, None] = None
+    ):
         """average_across_traces for abrs with multiple stimuli in a trace.
         This function averages the responses across multiple traces.
         and returns a list broken down by the individual traces.
@@ -209,27 +237,34 @@ class AnalyzeABR:
         """
         nreps = protocol["stimuli"]["nreps"]
         rec = protocol["recording"]
-        delay = protocol["stimuli"]["delay"]
-        dur = 0.010
-        dataset = []
+
         dblist = protocol["stimuli"]["dblist"]
         frlist = protocol["stimuli"]["freqlist"]
-
         stim_type = str(Path(fd).stem)
+        # print("Stim type: ", stim_type)
+        if stim_type.lower().startswith("interleaved"):
+            stim_type = "interleaved_plateau"
+        missing_reps = []
+        ndata = 0
         for n in range(nreps):
             fn = f"{date}_{stim_type}_{i:03d}_{n+1:03d}.p"
+            if not Path(fd, fn).is_file():
+                missing_reps.append(n)
+                continue
             d = self.read_abr_file(Path(fd, fn))
 
-            if n == 0:
+            if ndata == 0:
                 data = d["data"]
             else:
                 data += d["data"]
-            if n == 0:
-                print("original sample rate: ", self.fsamp)
-                print("number of data points: ", len(data))
+            if ndata == 0:
+                # print("original sample rate: ", self.fsamp)
+                # print("number of data points: ", len(data))
                 tb = np.arange(0, len(data) / self.fsamp, 1.0 / self.fsamp)
-
-        data = data / nreps
+            ndata += 1
+        if len(missing_reps) > 0:
+            CP.cprint("r", f"Missing {len(missing_reps)} reps for {fn!s}", "red")
+        data = data / (nreps - len(missing_reps))
         #  high pass filter at 300 Hz
         # data = self.FILT.SignalFilter_LPFButter(data, LPF=3000, samplefreq=self.fsamp, NPole=4)
         if high_pass_filter is not None:
@@ -251,9 +286,7 @@ class AnalyzeABR:
         # ax[0].plot(tb100, abr, '--r', linewidth=0.5)
         # mpl.show()
         # exit()
-        it0 = int(protocol["stimuli"]["delay"] * newrate)
 
-        abr = abr[it0:]
         one_response_100 = int(protocol["stimuli"]["stimulus_period"] * newrate)
         print(protocol["stimuli"])
         if isinstance(protocol["stimuli"]["freqlist"], str):
@@ -261,22 +294,24 @@ class AnalyzeABR:
         if isinstance(protocol["stimuli"]["dblist"], str):
             dblist = eval(protocol["stimuli"]["dblist"])
         arraylen = one_response_100 * protocol["stimuli"]["nstim"]
-        if stim_type in ["click", "tonepip"]:
+        if stim_type.lower() in ["click", "tonepip"]:
             nsplit = protocol["stimuli"]["nstim"]
-        elif stim_type in ["interleaved_plateau"]:
+        elif stim_type.lower() in ["interleaved_plateau"]:
             nsplit = int(len(frlist) * len(dblist))
+        else:
+            raise ValueError(f"Stimulus type {stim_type} not recognized")
         arraylen = one_response_100 * nsplit
-        print(len(frlist), len(dblist))
-        print("one response: ", one_response_100)
-        print("nsplit: ", nsplit)
-        print("arranlen/nsplit: ", float(arraylen) / nsplit)
-        print("len data: ", len(data), len(abr), nsplit * one_response_100)
+        # print(len(frlist), len(dblist))
+        # print("one response: ", one_response_100)
+        # print("nsplit: ", nsplit)
+        # print("arranlen/nsplit: ", float(arraylen) / nsplit)
+        # print("len data: ", len(data), len(abr), nsplit * one_response_100)
         sub_array = np.split(abr[:arraylen], nsplit)
         # print(len(sub_array))
         abr = np.array(sub_array)
         tb = tb100[:one_response_100]
 
-        print("abr shape: ", abr.shape, "max time: ", np.max(tb))
+        # print("abr shape: ", abr.shape, "max time: ", np.max(tb))
         stim = np.meshgrid(frlist, dblist)
         self.fsamp = newrate
         # print(stim)
@@ -291,9 +326,11 @@ class AnalyzeABR:
 
     def plot_abrs(
         self,
-        abrd: np.ndarray,
+        abr_data: np.ndarray,
         tb: np.ndarray,
         scale: str = "V",
+        acquisition: str = "pyabr3",
+        V_stretch: float = 1.0,
         highpass: Union[float, None] = None,
         stim_type: str = "click",
         dblist: Union[list, None] = None,
@@ -301,24 +338,30 @@ class AnalyzeABR:
         maxdur: float = 14.0,
         metadata: dict = {},
         use_matplotlib: bool = True,
+        live_plot: bool = False,
+        pdf: Union[object, None] = None,
     ):
 
         amplifier_gain = metadata["amplifier_gain"]
         if scale == "uV":
             # amplifier gain has already been accountd for.
-            amplifier_gain = 1.0
+            added_gain = 1.0
+        elif scale == "V":
+            added_gain = 1e6  # convert to microvolts
+        else:
+            raise ValueError(f"Scale {scale} not recognized, must be 'V' or 'uV'")
 
         if len(frlist) == 0 or stim_type == "click":
             frlist = [0]
             ncols = 1
-            width = (1.0 / 3.0) * len(dblist) * ncols
+            width = 5  # (1.0 / 3.0) * len(dblist) * ncols
             height = 1.0 * len(dblist)
-            lmar = 0.12
+            lmar = 0.15
         else:
             ncols = len(frlist)
             width = 2.0 * ncols
             height = 1.0 * len(dblist)
-            lmar = 0.08
+            lmar = 0.1
 
         if height > 10.0:
             height = 10.0 * (10.0 / height)
@@ -333,19 +376,26 @@ class AnalyzeABR:
                 margins={
                     "leftmargin": lmar,
                     "rightmargin": 0.05,
-                    "topmargin": 0.1,
-                    "bottommargin": 0.05,
+                    "topmargin": 0.15,
+                    "bottommargin": 0.10,
                 },
             )
             fn = metadata["filename"]
-
+            subname = ""
             if metadata["type"] == "ABR4":
                 filename = str(Path(fn).name)
                 if filename in ["Click", "Clicks", "Tone", "Tones"]:
                     filename = str(Path(fn).parent.name)
+                    parentname = str(Path(fn).parent.parent.name)
+                    subname = "/".join(Path(fn).parts[-3:])
+                else:
+                    filename = str(Path(fn).parent)
+                    parentname = str(Path(fn).parent.parent)
+                    subname = "/".join(Path(fn).parts[-2:])
             else:
                 filename = str(Path(fn).parent)
-            
+                parentname = str(Path(fn).parent.parent)
+
             subject_id = metadata["subject_id"]
             age = PA.ISO8601_age(metadata["age"])
             sex = metadata["sex"]
@@ -358,8 +408,35 @@ class AnalyzeABR:
                 hpftext = "Off"
             else:
                 hpftext = f"{highpass:5.1f} Hz"
-            title = f"File: {filename:s}, Stimulus: {stim_type}, Amplifier Gain: {amplifier_gain}, Fs: {rec_freq}, HPF: {hpftext:s}\n"
+            title_file_name = filename
+
+            if self.hide_treatment:
+                # hide the last 
+                if acquisition == "ABR4":
+                    tf_parts = list(Path(fn).parts)
+                    fnp = tf_parts[-2]
+                    fnsplit = fnp.split("_")
+                    fnsplit[-1] = "*"
+                    tf_parts[-2] = '_'.join([x for x in fnsplit])
+                    title_file_name = tf_parts[-2]
+                    page_file_name = str(Path(*tf_parts))
+                elif acquisition == "pyabr3":
+                    tf_parts = list(Path(fn).parts)
+                    fnp = tf_parts[-3]
+                    fnsplit = fnp.split("_")
+                    fnsplit[-1] = "*"
+                    tf_parts[-3] = '_'.join([x for x in fnsplit])
+                    page_file_name = str(Path(*tf_parts[:-1]))
+                    title_file_name = tf_parts[-3]
+
+            title = f"\n{title_file_name!s}\n"
+            title += f"Stimulus: {stim_type}, Amplifier Gain: {amplifier_gain}, Fs: {rec_freq}, HPF: {hpftext:s}, Acq: {acquisition:s}\n"
             title += f"Subject: {subject_id:s}, Age: {age:s} Sex: {sex:s}, Strain: {strain:s}, Weight: {weight:.2f}, Genotype: {genotype:s}"
+            # if acquisition == "pyabr3":
+            #     print("title: ", title)
+            #     print(self.hide_treatment)
+            #     exit()
+
             P.figure_handle.suptitle(title, fontsize=8)
             ax = P.axarr
             v_min = 0.0
@@ -375,73 +452,156 @@ class AnalyzeABR:
                 "xkcd:purple",
                 "xkcd:bright violet",
             ]
-            click_colors = ["xkcd:azure", "xkcd:lightblue", "xkcd:purple", "xkcd:orange", "xkcd:red", "xkcd:green",
-                            "xkcd:golden yellow"]
+            click_colors = [
+                "xkcd:azure",
+                "xkcd:lightblue",
+                "xkcd:purple",
+                "xkcd:orange",
+                "xkcd:red",
+                "xkcd:green",
+                "xkcd:golden yellow",
+            ]
             n_click_colors = len(click_colors)
             refline_ax = []
-            for j, fr in enumerate(range(ncols)):  # enumerate(abrd.keys()):
+            stack_dir = "up"
+            if metadata["type"] == "ABR4":
+                stack_dir = "up"
+            elif metadata["type"] == "pyabr3" and stim_type.lower().startswith("click"):
+                stack_dir = "down"
+            elif metadata["type"] == "pyabr3" and (
+                stim_type.lower().startswith("tone") or stim_type.lower().startswith("interleaved")
+            ):
+                stack_dir = "up"
+            else:
+                raise ValueError(
+                    f"Stimulus type {stim_type} not recognized togethger with data type {metadata['type']}"
+                )
+            for j, fr in enumerate(range(ncols)):  # enumerate(abr_data.keys()):
                 for i, db in enumerate(dblist):
 
-                    ax = P.axarr[len(dblist) - i - 1, j]
+                    if stack_dir == "up":
+                        ax = P.axarr[len(dblist) - i - 1, j]
+                    else:
+                        ax = P.axarr[i, j]
 
-                    PH.nice_plot(ax, direction="outward", ticklength=3)
-                    if i != 0:
-                        PH.noaxes(ax)
-                    npts = len(abrd[i, j])
-                    n_disp_pts = int(maxdur*1e-3 * rec_freq)  # maxdur is in msec.
+                    npts = len(abr_data[i, j])
+                    n_disp_pts = int(maxdur * 1e-3 * rec_freq)  # maxdur is in msec.
                     if n_disp_pts < npts:
                         npts = n_disp_pts
-                    plot_data = 1e6 * abrd[i, j] / amplifier_gain
+                    # print("added_gain: ", added_gain)
+                    plot_data = added_gain * abr_data[i, j] / amplifier_gain
                     if stim_type in ["click", "tonepip"]:
-                        ax.plot(tb[:npts] * 1e3, plot_data[:npts], color=click_colors[i % n_click_colors],
-                                linewidth=1, clip_on=False)
+                        ax.plot(
+                            (tb[:npts]) * 1e3,
+                            plot_data[:npts],
+                            color=click_colors[i % n_click_colors],
+                            linewidth=1,
+                            clip_on=False,
+                        )
                     else:
-                        ax.plot(tb[:npts] * 1e3, plot_data[:npts], color=colors[j], clip_on=False)
+                        ax.plot(
+                            (tb[:npts]) * 1e3,
+                            plot_data[:npts],
+                            color=colors[j],
+                            clip_on=False,
+                        )
                     if ax not in refline_ax:
                         PH.referenceline(ax, linewidth=0.5)
                         refline_ax.append(ax)
                     # print(dir(ax))
-                    ax.set_facecolor("#ffffff00")  # background will be transparent, allowing traces to extend into other axes
+                    ax.set_facecolor(
+                        "#ffffff00"
+                    )  # background will be transparent, allowing traces to extend into other axes
                     ax.set_xlim(0, maxdur)
-                    if i == len(dblist) - 1:
-                        if ncols > 1:
-                            ax.set_title(f"{frlist[j]} Hz")
+                    # let there be an axis on one trace (at the bottom)
+
+                    if stack_dir == "up":
+                        if i == len(dblist) - 1:
+                            if ncols > 1:
+                                ax.set_title(f"{frlist[j]} Hz")
+                            else:
+                                ax.set_title("Click")
+                            PH.noaxes(ax)
+                        elif i == 0:
+                            PH.nice_plot(ax, direction="outward", ticklength=3)
+                            ax.set_xlabel("Time (ms)")
+                            ticks = np.arange(0, maxdur, 2)
+                            ax.set_xticks(ticks, [f"{int(k):d}" for k in ticks])
                         else:
-                            ax.set_title("Click")
+                            PH.noaxes(ax)
+
+                    elif stack_dir == "down":
+                        if i == 0:
+                            if ncols > 1:
+                                ax.set_title(f"{frlist[j]} Hz")
+                            else:
+                                ax.set_title("Click")
+                            PH.noaxes(ax)
+                        elif i == len(dblist) - 1:
+                            PH.nice_plot(ax, direction="outward", ticklength=3)
+                            ticks = np.arange(0, maxdur, 2)
+                            ax.set_xticks(ticks, [f"{int(k):d}" for k in ticks])
+                            ax.set_xlabel("Time (ms)")
+                        else:
+                            PH.noaxes(ax)
+
                     if j == 0:
-                        ax.set_ylabel(f"{dblist[i]} dB")
+                        ax.set_ylabel(
+                            f"{int(float(dblist[i])):d}dBSPL ",
+                            fontsize=8,
+                            labelpad=0,
+                            rotation=0,
+                            ha="right",
+                            va="center",
+                        )
                     ax.set_xlim(0, np.max(tb[:npts]) * 1e3)
-                    if i == 0:
-                        ticks = np.arange(0, maxdur, 2)
-                        ax.set_xticks(
-                            ticks, [f"{int(k):d}" for k in ticks]
-                        )
-                    else:
-                        ax.set_xticks(
-                            ticks, [" "]*len(ticks)
-                        )
-                        
 
-                if i == 0:
-                    ax.set_xlabel("Time (ms)")
                 # ax.set_xticks([1, 3, 5, 7, 9], minor=True)
-
 
                 n += 1
                 if np.max(plot_data[:npts]) > v_max:
                     v_max = np.max(plot_data[:npts])
                 if np.min(plot_data[:npts]) < v_min:
                     v_min = np.min(plot_data[:npts])
-            amax = np.max([-v_min, v_max])/2.0
+
+            if metadata["type"] == "pyabr3" and stim_type.lower().startswith("click"):
+                V_stretch = 10.0 * V_stretch
+
+            amax = np.max([-v_min, v_max]) * V_stretch
+            if amax < 0.5:
+                amax = 0.5
             # print(P.axarr.shape, len(dblist), len(frlist))
 
             for i in range(len(dblist)):
                 for j in range(len(frlist)):
                     P.axarr[i, j].set_ylim(-amax, amax)
                     # PH.referenceline(ax, linewidth=0.5)
+            mpl.text(
+                0.96,
+                0.01,
+                s=datetime.datetime.now(),
+                fontsize=6,
+                ha="right",
+                transform=P.figure_handle.transFigure,
+            )
+            mpl.text(
+                0.02,
+                0.01,
+                s=f"{page_file_name:s}",
+                fontsize=5,
+                ha="left",
+                transform=P.figure_handle.transFigure,
+            )
 
+            if live_plot:
+                mpl.show()
+            else:
+                # print(P.figure_handle)
+                pdf.savefig(P.figure_handle)
+                mpl.close()
             # mpl.tight_layout()
-            mpl.show()
+            # mpl.show()
+
         else:  # use pyqtgraph
             app = pg.mkQApp("ABR Data Plot")
             win = pg.GraphicsLayoutWidget(show=True, title="ABR Data Plot")
@@ -459,7 +619,7 @@ class AnalyzeABR:
             col = 0
 
             print("stim_type (in pg plotting)", stim_type)
-            if stim_type not in ["clicks", "click"]:
+            if stim_type not in ["clicks", "click"]:  # this is for tones/interleaved, etc.
                 ref_set = False
                 v_min = 0
                 v_max = 0
@@ -468,7 +628,7 @@ class AnalyzeABR:
                     for j, fr in enumerate(frlist):
                         col = j
                         # if tb is None:
-                        #     npts = len(abrd[i, j])
+                        #     npts = len(abr_data[i, j])
                         #     tb = np.linspace(0, npts / rec_freq, npts)
 
                         pl = win.addPlot(
@@ -477,7 +637,7 @@ class AnalyzeABR:
                         if not ref_set:
                             ref_ax = pl
                             ref_set = True
-                        plot_data = 1e6 * abrd[len(dblist) - i - 1, j] / amplifier_gain
+                        plot_data = 1e6 * abr_data[len(dblist) - i - 1, j] / amplifier_gain
                         lpd = len(plot_data)
                         if stim_type in ["click", "tonepip"]:
                             pl.plot(
@@ -515,9 +675,10 @@ class AnalyzeABR:
                             v_max = np.max(plot_data)
                         if np.min(plot_data) < v_min:
                             v_min = np.min(plot_data)
-                ref_ax.setYRange(v_min, v_max)
 
-            else:
+                ref_ax.setYRange(v_min * V_stretch, v_max * V_stretch)
+
+            else:  # pyqtgraph
                 v0 = 0
                 v = []
                 for i, db in enumerate(dblist):
@@ -525,7 +686,7 @@ class AnalyzeABR:
                         pl = win.addPlot(title=f"{db} dB, {fr} Hz")  # i % 5)
                     pl.plot(
                         tb * 1e3,
-                        -v0 + abrd[i, j] / amplifier_gain,
+                        -v0 + abr_data[i, j] / amplifier_gain,
                         pen=pg.mkPen(pg.intColor(i, hues=len(dblist)), width=2),
                         clipToView=True,
                     )
@@ -562,83 +723,50 @@ class AnalyzeABR:
                         PH.referenceline(ax, linewidth=0.5)
                         n += 1
 
-            # else:  # use pyqtgraph
-            #     app = pg.mkQApp("ABR Data Plot")
-            #     win = pg.GraphicsLayoutWidget(show=True, title="ABR Data Plot")
-            #     win.resize(1000, 1000)
-            #     win.setWindowTitle(f"File: {str(Path(fn).parent)}")
-            #     plid = []
-            #     if len(frlist) == 0:
-            #         frlist = [1]
-            #     for i, db in enumerate(dblist):
-            #         for j, fr in enumerate(frlist):
-            #             pl = win.addPlot(
-            #                 title=f"{self.convert_attn_to_db(db, fr):5.1f} dB, {fr:8.1f} Hz"
-            #             )
-            #             if stim_type in ["click", "tonepip"]:
-            #                 pl.plot(
-            #                     tb * 1e3,
-            #                     abrd[i, j] / self.gain,
-            #                     pen=pg.mkPen(j, len(dblist), width=2),
-            #                     clipToView=True,
-            #                 )
-            #             else:
-            #                 pl.plot(
-            #                     tb * 1e3,
-            #                     abrd[len(dblist) - i - 1, j] / self.gain,
-            #                     pen=pg.mkPen(j, len(dblist), width=2),
-            #                     clipToView=True,
-            #                 )
-            #             # pl.showGrid(x=True, y=True)
-            #             if j == 0:
-            #                 pl.setLabel("left", "Amplitude", units="mV")
-            #             if i == 0:
-            #                 pl.setLabel("bottom", "Time", units="s")
-            #             pl.setYRange(-5e-6, 5e-6)
-            #             plid.append(pl)
-            #         win.nextRow()
-
             pg.exec()
 
         # Enable antialiasing for prettier plots
         pg.setConfigOptions(antialias=True)
 
-
     def check_fsamp(self, d):
         if d["record_frequency"] is None:
-            d["record_frequency"] = 24414.0625   # 97656.25
-        return d['record_frequency']
+            d["record_frequency"] = 24414.0625  # 97656.25
+        return d["record_frequency"]
 
-
-    def read_and_average_abr_files(self, fn, amplifier_gain=1e4, high_pass_filter: Union[float, None] = None, maxdur:Union[float, None]=None):
-        d = self.read_abr_file(fn)
-        print("read and average abrs")
+    def read_and_average_abr_files(
+        self,
+        filename,
+        amplifier_gain=1e4,
+        scale: str = "V",
+        high_pass_filter: Union[float, None] = None,
+        maxdur: Union[float, None] = None,
+        pdf: Union[object, None] = None,
+    ):
+        d = self.read_abr_file(filename)
+        print("     Read and average abrs")
         # print(d["protocol"])
         # print("d keys: ", d.keys())
         self.fsamp = self.check_fsamp(d)
         if maxdur is None:
             maxdur = 25.0
         stim_type = d["protocol"]["protocol"]["stimulustype"]
-        fd = Path(fn).parent
+        fd = Path(filename).parent
         fns = Path(fd).glob("*.p")
         # break the filenames into parts.
-        # The first part is the date, the second part is the stimulus type,
+        # The first part is the date,
+        # the second part is the stimulus type,
         # the third part is the index into the stimulus array
         # the fourth part is the repetition number for a given stimulus
         protocol = d["protocol"]
         rec = protocol["recording"]
-        print("rec: ", rec)
+        # print("rec: ", rec)
         dblist = protocol["stimuli"]["dblist"]
         frlist = protocol["stimuli"]["freqlist"]
         if isinstance(dblist, str):
             dblist = eval(dblist)
         if isinstance(frlist, str):
             frlist = eval(frlist)
-        # ndb = len(dblist)
-        # nreps = protocol["stimuli"]["nreps"]
-        # delay = protocol["stimuli"]["delay"]
-        # dur = 0.010
-        print(d["subject_data"])
+
         subject_id = d["subject_data"]["Subject ID"]
         if d["subject_data"]["Age"] != "":
             age = PA.ISO8601_age(d["subject_data"]["Age"])
@@ -652,11 +780,11 @@ class AnalyzeABR:
             weight = 0.0
         genotype = d["subject_data"]["Genotype"]
 
-        file_parts = Path(fn).stem.split("_")
+        file_parts = Path(filename).stem.split("_")
         # print(file_parts)
         date = file_parts[0]
         stim_type = file_parts[1]
-        print("stim type(before...): ", stim_type)
+        # print("stim type(before...): ", stim_type)
         if len(frlist) == 0:
             frlist = [1]
         if stim_type in ["click", "tonepip"]:
@@ -671,22 +799,24 @@ class AnalyzeABR:
                         high_pass_filter=high_pass_filter,
                     )
                     if i == 0 and j == 0:
-                        abrd = np.zeros((len(dblist), len(frlist), len(x)))
-                    abrd[i, j] = x
+                        abr_data = np.zeros((len(dblist), len(frlist), len(x)))
+                    abr_data[i, j] = x
                     n += 1
 
-        print("stim type:: ", stim_type)
+        # print("stim type:: ", stim_type)
         if stim_type in ["interleaved"]:
             n = 0
-            abrd, tb, stim = self.average_across_traces(fd, n, protocol, date, high_pass_filter=high_pass_filter)
+            abr_data, tb, stim = self.average_across_traces(
+                fd, n, protocol, date, high_pass_filter=high_pass_filter
+            )
             # print(len(frlist), len(dblist))
-            abrd = abrd.reshape(len(dblist), len(frlist), -1)
-            print("calculated new tb")
+            abr_data = abr_data.reshape(len(dblist), len(frlist), -1)
+            # print("calculated new tb")
         else:
-            tb = np.linspace(0, len(abrd[0, 0]) / self.fsamp, len(abrd[0, 0]))
+            tb = np.linspace(0, len(abr_data[0, 0]) / self.fsamp, len(abr_data[0, 0]))
         metadata = {
-            "type": "pyabr4",
-            "filename": fn,
+            "type": "pyabr3",
+            "filename": filename,
             "subject_id": subject_id,
             "age": age,
             "sex": sex,
@@ -694,33 +824,102 @@ class AnalyzeABR:
             "strain": strain,
             "weight": weight,
             "genotype": genotype,
-            "record_frequency": self.fsamp
+            "record_frequency": self.fsamp,
         }
 
-        self.plot_abrs(abrd, tb, stim_type, dblist=dblist, frlist=frlist, metadata=metadata,
-                       stim_type=stim_type, maxdur=maxdur, highpass=300.0,
-                       use_matplotlib=True)
+        self.plot_abrs(
+            abr_data=abr_data,
+            tb=tb,
+            stim_type=stim_type,
+            scale=scale,
+            dblist=dblist,
+            frlist=frlist,
+            metadata=metadata,
+            maxdur=maxdur,
+            highpass=300.0,
+            use_matplotlib=True,
+            pdf=pdf,
+        )
+
+
+def do_directory(
+    directory_name: Union[Path, str],
+    output_file: Union[Path, str],
+    subject_prefix: str = "CBA",
+    hide_treatment: bool = False,
+):
+    AR = AnalyzeABR()
+    AR.set_hide_treatment(hide_treatment)
+    ABR4 = read_abr4.READ_ABR4()
+    maxdur = 12.0
+    HPF = 300.0
+    # base directory
+    directory_name = "/Volumes/Pegasus_002/ManisLab_Data3/abr_data/Reggie_NIHL"
+    subjs = Path(directory_name).glob(f"{subject_prefix}*")
+    with PdfPages(output_file) as pdf:
+        for subj in subjs:
+            if not subj.is_dir():
+                continue
+            fns = subj.glob("*")
+            for f in fns:
+                fname = f.name.lower()
+                if fname.startswith("click"):
+                    print("Click file: ", f)
+                    pfiles = list(Path(f).glob("*_click_*.p"))
+                    if len(pfiles) > 0:
+                        AR.read_and_average_abr_files(
+                            filename=str(pfiles[0]), high_pass_filter=HPF, maxdur=maxdur, pdf=pdf
+                        )
+                    else:
+                        ABR4.plot_dataset(
+                            AR,
+                            datatype="click",
+                            subject=f.parent,
+                            topdir=directory_name,
+                            subdir=f.name,
+                            highpass=HPF,
+                            maxdur=maxdur,
+                            pdf=pdf,
+                        )
+                elif fname.startswith("tone"):
+                    print("Tone file: ", f)
+                    ABR4.plot_dataset(
+                        AR,
+                        datatype="tone",
+                        subject=f.parent,
+                        topdir=directory_name,
+                        subdir=f.name,
+                        highpass=HPF,
+                        maxdur=maxdur,
+                        pdf=pdf,
+                    )
+                elif fname.lower().startswith("interleaved"):
+                    print("Interleaved file: ", f)
+                    files = list(Path(f).glob("*.p"))
+                    print(f, "\n     # interleaved files: ", len(files))
+                    # d = AR.read_abr_file(str(files[0]))
+                    # print(d["stimuli"].keys())
+                    HPF = 300.0
+                    # AR.show_stimuli(files[0])
+
+                    AR.read_and_average_abr_files(
+                        filename=str(files[0]),
+                        high_pass_filter=HPF,
+                        maxdur=maxdur,
+                        pdf=pdf,
+                    )
+                else:
+                    if not f.name.startswith(".DS_Store"):
+                        raise ValueError(f"File {f} for data file {fname:s} not recognized")
 
 
 if __name__ == "__main__":
-    fn = "abr_data/2024-11-13/clicks"
-    fn = "abr_data/2024-11-15-B/interleaved_plateau"
-    fn = "abr_data/2024-12-10-p572-A/interleaved_plateau"
-    # fn = "abr_data/2024-12-11-p573-A/interleaved_plateau"
-    if not Path(fn).is_dir():
-        print(f"Directory {fn} does not exist")
-        print(list(Path("abr_data").glob("*")))
-        exit()
-    files = list(Path(fn).glob("*.p"))
-    print(str(files[0]))
-    print(files[0].is_file())
 
-    AR = AnalyzeABR()
-    # AR.show_calibration(files[0])
-    # AR.show_calibration_history()
-    # exit()
-    d = AR.read_abr_file(str(files[0]))
-    print(d["stimuli"].keys())
-    HPF = 300.0
-    # AR.show_stimuli(files[0])
-    AR.read_and_average_abr_files(str(files[0]), high_pass_filter=HPF, maxdur=12.0)
+    do_directory(
+        directory_name="/Volumes/Pegasus_002/ManisLab_Data3/abr_data/Reggie_NIHL",
+        output_file="NIHL_VGAT-EYFP_ABRs_combined.pdf",
+        subject_prefix="VGAT-EYFP",
+        hide_treatment=True,
+    )
+
+    
