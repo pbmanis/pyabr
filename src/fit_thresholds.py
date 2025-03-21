@@ -14,10 +14,8 @@ def fit_thresholds(x, y, baseline, threshold_factor=2.5, spl_range=[1, 90]):
     Hillmodel.set_param_hint("vmax", min=0.0, max=20.0)
     Hillmodel.set_param_hint("v50", min=0.0, max=100.0)
     Hillmodel.set_param_hint("n", min=1.0, max=5.0)
-    print("dbs: ", x)
-    print("V: ", y)
+
     params = Hillmodel.make_params(vmax=5, v50=50.0, n=2)
-    print("params: ", params)
 
     result = Hillmodel.fit(y, params, x=x)
     yfit = result.best_fit
