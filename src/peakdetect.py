@@ -12,8 +12,9 @@ def nzc_temporal_filtered(fs, waveform, min_spacing=0.3):
     return np.asarray(nzc_indices[p_indices])
 
 
-def nzc_noise_filtered(fs, waveform, dev=1.0, min_spacing=0.3):
+def nzc_noise_filtered(fs, waveform, dev=1.0, min_spacing=0.3e-3):
 
+    # noise from first 1 msec of trace
     min_noise = waveform[: int(1e-3 * fs)].std() * dev
 
     p_ind = nzc(waveform)
@@ -36,7 +37,7 @@ def nzc_noise_filtered(fs, waveform, dev=1.0, min_spacing=0.3):
 
     # If algorithm is too agressive, comment out the following two lines
     if len(ind) > 5:
-        f_ind = cluster(ind, waveform[ind], min_spacing * 1e-3 * fs)
+        f_ind = cluster(ind, waveform[ind], min_spacing * fs)
         ind = ind[f_ind]
     return np.asarray(ind)
 
@@ -60,7 +61,7 @@ def find_np(
     Parameters
     ----------
     fs : float
-        sampling frequency of waveform
+        sampling frequency of waveform (Hz)
     waveform : rank-1 ndarray
         the waveform
     nzc_algorithm : string (none, noise, temporal)
@@ -82,7 +83,7 @@ def find_np(
     List of estimated peak indices
 
     This algorithm identifies the negative zero crossings (NZCs) of the first
-    derivative of the waveform.  These NZCs reflect putative peaks.  For
+    derivative of the waveform.  These NZCs reflect putative positive peaks.  For
     particularly noisy signals, there will be many spurious zero crossings due
     to high-frequency artifacts.  Two algorithms are currently available to
     eliminate as many spurious peaks as possible (specified using the
@@ -155,9 +156,7 @@ def find_np(
                     # If the algorithm cannot make a guess as to the best index,
                     # it will raise an IndexError.  We capture that and place
                     # the index on the very end of the waveform.
-                    guess = guess_func(
-                        fs, waveform, bounded_indices, p, **guess_algorithm_kw
-                    )
+                    guess = guess_func(fs, waveform, bounded_indices, p, **guess_algorithm_kw)
                     indices.append(guess)
                 except IndexError:
                     indices.append(len(waveform) - 1)
@@ -178,11 +177,11 @@ def np_none(fs, waveform, indices, n):
     return indices[0][n]
 
 
-def np_basic(fs, waveform, indices, n, min_latency=1.0):
+def np_basic(fs, waveform, indices, n, min_latency=1.0e-3):
     """
     Returns the first n indices whose latency is greater than min_latency
     """
-    lb_index = min_latency / 1e3 * fs
+    lb_index = min_latency * fs
     return indices[indices >= lb_index][n]
 
 
@@ -191,15 +190,41 @@ def np_y_fun(fs, waveform, indices, n, fun=max):
 
 
 def np_seed(fs, waveform, indices, n, seeds, seed_lb=0.25, seed_ub=0.50):
+    """np_seed _summary_
+
+    Parameters
+    ----------
+    fs : float
+        sample frequency, in Hz
+    waveform : array
+        _description_
+    indices : _type_
+        _description_
+    n : _type_
+        _description_
+    seeds : _type_
+        _description_
+    seed_lb : float, optional
+        _description_, by default 0.25
+    seed_ub : float, optional
+        _description_, by default 0.50
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
     amplitudes = waveform[indices]
-    lb = seed_lb * 1e-3 * fs
-    ub = seed_ub * 1e-3 * fs
+    lb = seed_lb * fs
+    ub = seed_ub * fs
     return seed_rank(seeds[n], indices, amplitudes, 3, lb, ub)[0][0]
 
 
 def iterator_np(fs, waveform, start, nzc_filter=None):
     """
     Coroutine that steps through the possible guesses for the peak
+
+    fs: sample frequency of waveform in Hz
     """
     if nzc_filter is None:
         nzc_indices = nzc(waveform)
