@@ -10,6 +10,8 @@ pytest==4.5.0
 toml
 
 # Specific requirements
+pyabf
+sympy
 nidaqmx
 matplotlib>=3.9
 pandas
@@ -28,9 +30,11 @@ pyaudio  # this will have to be done manually
 pyqt6>=6.7
 pyqt6-sip>=13.8
 pyqtgraph>=0.13.7
-tdtpy
-# pywin32
 
-# -e git://github.com/pbmanis/pylibrary.git#egg=pylibrary
+# pywin32
+# MetaArray==2.1.1
+# ephys @ git+https://github.com/pbmanis/ephys.git#egg=ephys
+# pylibrary @ git+https://github.com/pbmanis/pylibrary.git#egg=pylibrary@bd03b58
 # -e C:/Users/experimenters/Desktop/Python/pylibrary
-# -e /Users/pbmanis/Desktop/Python/pylibrary
+-e /Users/pbmanis/Desktop/Python/pylibrary
+# tdtpy
