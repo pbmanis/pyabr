@@ -13,7 +13,7 @@ from pyqtgraph.Qt import QtCore, QtGui
 
 import parse_ages
 from src import filter_util as filter_util
-from src import laodhdf5mat as ldh5
+
 from src import read_abr as RA
 
 re_click = re.compile(r"[\d]{8}-[\d]{4}-[pn]{1}.txt$", re.IGNORECASE)
@@ -49,11 +49,12 @@ class READ_ABR4:
         self,
         subject: str,
         datapath: Union[Path, str],  # path to the data (.txt files are in this directory)
-        datatype: str = "click",
-        subdir: str = "Tones",  # or "Clicks"
+        datatype: str = "Click",
+        subdir: str = "Tone",  # or "Clicks"
         run: str = "20220518-1624",
         highpass: Union[float, None] = None,
         lineterm="\r",
+        fold: bool = False,  # fold flag - for when there are 2 responses in a waveform.
     ):
         """
         Read a dataset, combining the positive and negative recordings,
@@ -76,26 +77,29 @@ class READ_ABR4:
         timebase
 
         """
+        metadata = None
         # handle missing files.
         if self.sample_freq is None:
             self.sample_freq = 100000.0
-
-        if datatype == "click":
+        if datatype not in ["Click", "Tone"]:
+            raise ValueError(f"Unknown datatype: {datatype:s}")
+        
+        if datatype == "Click":
             self.sample_freq = 50000.0  # click data is sampled at 50 kHz
             # find click runs for this subject:
-            click_runs = self.find_click_files(datapath, subject, subdir)
+            click_runs = self.find_click_files([datapath], subject="", subdir="")
             print("click runs: ", click_runs)
             if len(click_runs) == 0:
                 return None, None
             for run in click_runs:
                 waves, tb = self.get_clicks(
-                    datapath, subject, subdir, click_runs[run], highpass=highpass
+                    datapath, subject, subdir, click_runs[run], highpass=highpass,
+                    fold = fold
                 )
-            return waves, tb
 
-        elif datatype == "tone":
+        elif datatype == "Tone":
             self.sample_freq = 100000.0  # tone data is sampled at 100 kHz
-            tone_runs_avg, tb = self.find_tone_files(datapath, subject, subdir, highpass=highpass)
+            tone_runs_avg, tb = self.find_tone_files(datapath, subject, subdir, highpass=highpass, fold=fold)
             if tone_runs_avg is None:
                 return None, None
             # now, re-organize the data into a 3d array for the main analysis program
@@ -117,37 +121,72 @@ class READ_ABR4:
             except:
                 raise ValueError(f"Error in reading tone data: {n:d}, {datapath!s}, {subject!s}, {freq}, {db}")
                 # print("readdataset wave shape: ", waves.shape)
-
-            return waves, tb
-
+        if metadata is None:
+            metadata = {
+                "type": "ABR4",
+                "filename": str(self.filename),
+                "subject_id": "no id",
+                "subject": subject,
+                "age": 0,
+                "sex": "ND",
+                "stim_type": datatype,
+                "stimuli": {"dblist": self.dblist, "frlist": sorted(self.frequencies)},
+                "amplifier_gain": 1.0,  # already accounted for in the dataR.amplifier_gain,
+                "scale": "V",
+                "V_stretch": 0.5,
+                "strain": "ND",
+                "weight": 0.0,
+                "genotype": "ND",
+                "record_frequency": self.sample_freq,
+            }
         else:
-            CP.cprint("r", f"    ABR_Reader.read_dataset: Unknown datatype: {datatype:s}")
-            return None, None
+
+            metadata = {
+                "type": "ABR4",
+                "filename": str(self.filename),
+                "subject_id": "no id",
+                "subject": subject,
+                "age": 0,
+                "sex": "ND",
+                "amplifier_gain": 1.0,  # already accounted for in the data: amplifier_gain,
+                "stim_type": datatype,
+                "stimuli": {"dblist": self.dblist, "frlist": sorted(self.frequencies)},
+                "scale": "V",
+                "V_stretch": 0.5,
+                "strain": "ND",
+                "weight": 0.0,
+                "genotype": "ND",
+                "record_frequency": self.sample_freq,
+            }
+
+        return waves, tb, metadata
+
 
     def find_click_files(self, datapath, subject, subdir):
-        directory = Path(datapath, subject, subdir)
-        if not directory.is_dir():
-            print(f"Directory: {str(directory):s} was not found")
-            exit()
+        print(datapath, subject, subdir)
+        for dpath in datapath:
+            directory = Path(dpath, subject, subdir)
+            if not directory.is_dir():
+                directory = directory.parent
 
-        print("Directory for data found: ", str(directory))
-        datafiles = list(directory.rglob(f"*.txt"))
-        click_runs = {}
-        self.filename = directory
-        for df in datafiles:
-            m = re.match(re_click, df.name)
-            if m is not None:
-                click_runs[df.name[:13]] = {
-                    "p": f"{df.name[:14]}p.txt",
-                    "n": f"{df.name[:14]}n.txt",
-                    "SPL": f"{df.name[:14]}SPL.txt",
-                }
-                df_datetime = f"{df.name[:14]}SPL.txt"
-                # print(df_datetime, re.match(re_spl, df_datetime))
-        print("Found runs: ", click_runs)
-        return click_runs
+            print("Data found: ", str(directory))
+            datafiles = list(directory.rglob(f"*.txt"))
+            click_runs = {}
+            self.filename = directory
+            for df in datafiles:
+                m = re.match(re_click, df.name)
+                if m is not None:
+                    click_runs[df.name[:13]] = {
+                        "p": f"{df.name[:14]}p.txt",
+                        "n": f"{df.name[:14]}n.txt",
+                        "SPL": f"{df.name[:14]}SPL.txt",
+                    }
+                    df_datetime = f"{df.name[:14]}SPL.txt"
+                    # print(df_datetime, re.match(re_spl, df_datetime))
+            print("Found runs: ", click_runs)
+            return click_runs
 
-    def find_tone_files(self, datapath, subject, subdir, highpass: Union[float, None] = None):
+    def find_tone_files(self, datapath, subject, subdir, highpass: Union[float, None] = None, fold:bool=False):
         """find_tone_files find the tone files in this directory
         The result is a dictionary whose keys are the frequency and intensity pairs,
         and whose values are a list of the csv (txt) files for the negative and positive
@@ -216,6 +255,7 @@ class READ_ABR4:
                         tone_runs_p[run_key] = []
         if len(datafiles) == 0:
             return None, None
+        print(" SPL List : ", spl_list)
         # now read the data into the dictionaries
         # and assign the data to the appropriate key in the dictionary
         # print("runfiles: ", run_files)
@@ -362,19 +402,33 @@ class READ_ABR4:
 
         mpl.show()
 
-    def get_clicks(self, datapath, subject, subdir, run, highpass: Union[float, None] = None):
+    def get_clicks(self, datapath, subject, subdir, run, highpass: Union[float, None] = None, fold:bool=False):
         # do a quick check to see if there are subdirectories for tones and clicks:
-        if subdir == "":
-            test_dir = Path(datapath, subject, "Clicks")
-            if test_dir.is_dir():
-                subdir = "Clicks"
-            test_dir = Path(datapath, subject, "Click")
-            if test_dir.is_dir():
-                subdir = "Click"
+        # print("subdir: ", subdir)
+        if datapath.name == "Click":
+            print("run (spl file for click data): ", run["SPL"])
+        # if subdir == "":
+        #     test_dir = Path(datapath, subject, "Clicks")
+        #     if test_dir.is_dir():
+        #         subdir = "Clicks"
+        #     test_dir = Path(datapath, subject, "Click")
+        #     if test_dir.is_dir():
+        #         subdir = "Click"
 
-        spl_file = Path(datapath, subject, subdir, run["SPL"])
-        pos_file = Path(datapath, subject, subdir, run["p"])
-        neg_file = Path(datapath, subject, subdir, run["n"])
+        spl_file = Path(datapath, run["SPL"])
+        # print("spl_file: ", spl_file, spl_file.is_file(), subdir)
+        if not spl_file.is_file():
+            subdir = ""
+            # spl_file = Path(datapath, subject, subdir, run["SPL"])
+            splf_ile = Path(datapath, run["SPL"])
+            if not spl_file.is_file():
+                CP.cprint("r", f"    ABR_Reader.read_dataset: Did not find SPL file: {spl_file!s}")
+                raise FileNotFoundError(f"Did not find SPL file: {spl_file!s}")
+
+        pos_file = Path(datapath, run["p"])
+        neg_file = Path(datapath, run['n'])
+        # pos_file = Path(datapath, subject, subdir, run["p"])
+        # neg_file = Path(datapath, subject, subdir, run["n"])
         if not pos_file.is_file():
             CP.cprint("r", f"    ABR_Reader.read_dataset: Did not find pos file: {pos_file!s}")
             return None, None
@@ -408,41 +462,62 @@ class READ_ABR4:
             names=spllist,
             engine="python",
         )
+        # fix Nan at end of array in posf data.
+        # print(posf.columns)
+        # print(posf[spllist[0]].values)
+        for pc in posf.columns:
+            pvals = posf[pc].values
+            if np.isnan(pvals[-1]):
+                pvals = pvals[-2]
+                posf[pc] = pvals
         npoints = len(posf[spllist[0]])
-
-        print(f"Number of points: {npoints:d}")
+        # print("Posf values: ", posf[spllist[0]].values)
+        # exit()      
+        # print(f"Number of points: {npoints:d}")
         tb = np.linspace(0, npoints * (1.0 / self.sample_freq), npoints)
 
         npoints = tb.shape[0]
         n2 = int(npoints / 2)
         #  waves are [#db, #fr, wave]
-        waves = np.zeros((len(posf.columns), len(self.frlist), n2))
-        tb = tb[:n2]
-        app = pg.mkQApp("summarize abr4 output")
-        win = pg.GraphicsLayoutWidget(show=True, title="ABR Data Plot")
-        win.resize(800, 600)
-        win.setWindowTitle(f"awwww")
-        symbols = ["o", "s", "t", "d", "+", "x"]
-        win.setBackground("w")
-        pl = win.addPlot(title=f"abr")
+        if fold:
+            waves = np.zeros((len(posf.columns), len(self.frlist), n2))
+            tb = tb[:n2]
+        else:
+            waves = np.zeros((len(posf.columns), len(self.frlist), npoints))
+            
+        # app = pg.mkQApp("summarize abr4 output")
+        # win = pg.GraphicsLayoutWidget(show=True, title="ABR Data Plot")
+        # win.resize(800, 600)
+        # win.setWindowTitle(f"awwww")
+        # symbols = ["o", "s", "t", "d", "+", "x"]
+        # win.setBackground("w")
+        # pl = win.addPlot(title=f"abr")
 
-        for j, fr in enumerate(self.frlist):
-            for i1, cn in enumerate(posf.columns):
-                i = len(posf.columns) - i1 - 1
-                waves[i, j] = (
-                    negf[cn].values[:n2]
-                    + negf[cn].values[n2:]
-                    + posf[cn].values[:n2]
-                    + posf[cn].values[n2:]
-                ) / 4.0
-                if highpass is not None:
-                    # print("get clicks: higpass, samplefreq: ", highpass, self.sample_freq)
+        if fold:
+            for j, fr in enumerate(self.frlist):
+                for i1, cn in enumerate(posf.columns):
+                    i = len(posf.columns) - i1 - 1
+                    waves[i, j] = (
+                        negf[cn].values[:n2]
+                        + negf[cn].values[n2:]
+                        + posf[cn].values[:n2]
+                        + posf[cn].values[n2:]
+                    ) / 4.0
+        else:
+            for j, fr in enumerate(self.frlist):
+                for i1, cn in enumerate(posf.columns):
+                    i = len(posf.columns) - i1 - 1
+                    waves[i, j] = posf[cn].values + negf[cn].values
+        if highpass is not None:
+            # print("get clicks: higpass, samplefreq: ", highpass, self.sample_freq)
+            for i in range(waves.shape[0]):
+                for j in range(waves.shape[1]):
                     waves[i, j] = self.FILT.SignalFilter_HPFButter(
                         waves[i, j], HPF=highpass, samplefreq=self.sample_freq, NPole=4, bidir=True
                     )
 
-                if self.invert:
-                    waves[i, j] = -waves[i, j]
+        if self.invert:
+            waves = -waves
 
         return waves, tb
 
@@ -482,7 +557,7 @@ class READ_ABR4:
         pdf : object, optional
             a pdf object for pdfpages by default None
         """
-        w, t = self.read_dataset(
+        w, t, metadata = self.read_dataset(
             subject=subject,
             datapath=topdir,
             subdir=subdir,
@@ -498,40 +573,6 @@ class READ_ABR4:
         # print("db: ", R.dblist)
         # print(fn)
         # print("R.record freq: ", R.sample_freq)
-        if metadata is None:
-            metadata = {
-                "type": "ABR4",
-                "filename": str(self.filename),
-                "subject_id": "no id",
-                "subject": subject,
-                "age": 0,
-                "sex": "ND",
-                "amplifier_gain": 1.0,  # already accounted for in the dataR.amplifier_gain,
-                "scale": "V",
-                "V_stretch": 0.5,
-                "strain": "ND",
-                "weight": 0.0,
-                "genotype": "ND",
-                "record_frequency": self.sample_freq,
-            }
-        else:
-            print(metadata)
-            exit()
-            metadata = {
-                "type": "ABR4",
-                "filename": str(self.filename),
-                "subject_id": "no id",
-                "subject": subject,
-                "age": 0,
-                "sex": "ND",
-                "amplifier_gain": 1.0,  # already accounted for in the dataR.amplifier_gain,
-                "scale": "V",
-                "V_stretch": 0.5,
-                "strain": "ND",
-                "weight": 0.0,
-                "genotype": "ND",
-                "record_frequency": self.sample_freq,
-            }
 
         # R.abr4_plot(waves=w, tb=t, frequencies = R.frequencies, spls=R.dblist)
         # exit()
