@@ -39,7 +39,7 @@ class find_datasets:
 
 class READ_ABR4:
     def __init__(self):
-        self.sample_freq = 100000.0  # default for matlab ABR4 program (interpolzted)
+        self.sample_freq = None # default for matlab ABR4 program (interpolzted)
         self.amplifier_gain = 1e4  # default for ABR4 recording (set externally on Grass P511J)
         self.FILT = filter_util.Utility()
         self.invert = False
@@ -79,13 +79,12 @@ class READ_ABR4:
         """
         metadata = None
         # handle missing files.
-        if self.sample_freq is None:
-            self.sample_freq = 100000.0
+
         if datatype not in ["Click", "Tone"]:
             raise ValueError(f"Unknown datatype: {datatype:s}")
         
         if datatype == "Click":
-            self.sample_freq = 50000.0  # click data is sampled at 50 kHz
+            sample_freq = 50000. # click data is sampled at 50 kHz
             # find click runs for this subject:
             click_runs = self.find_click_files([datapath], subject="", subdir="")
             print("click runs: ", click_runs)
@@ -93,15 +92,17 @@ class READ_ABR4:
                 return None, None
             for run in click_runs:
                 waves, tb = self.get_clicks(
-                    datapath, subject, subdir, click_runs[run], highpass=highpass,
+                    datapath, subject, subdir, click_runs[run], sample_freq=sample_freq, highpass=highpass,
                     fold = fold
                 )
+                self.sample_freq = 1./np.mean(np.diff(tb))
+                print("self sample freq; ", self.sample_freq)
 
         elif datatype == "Tone":
-            self.sample_freq = 100000.0  # tone data is sampled at 100 kHz
-            tone_runs_avg, tb = self.find_tone_files(datapath, subject, subdir, highpass=highpass, fold=fold)
+            self.sample_freq = 100000.  # tone data is sampled at 100 kHz
+            tone_runs_avg, tb = self.find_tone_files(datapath, "", "", highpass=highpass, fold=fold)
             if tone_runs_avg is None:
-                return None, None
+                return None, None     
             # now, re-organize the data into a 3d array for the main analysis program
             # The frequency columns must be sorted and aligne
             self.frlist = list(tone_runs_avg.keys())
@@ -121,6 +122,7 @@ class READ_ABR4:
             except:
                 raise ValueError(f"Error in reading tone data: {n:d}, {datapath!s}, {subject!s}, {freq}, {db}")
                 # print("readdataset wave shape: ", waves.shape)
+
         if metadata is None:
             metadata = {
                 "type": "ABR4",
@@ -138,6 +140,7 @@ class READ_ABR4:
                 "weight": 0.0,
                 "genotype": "ND",
                 "record_frequency": self.sample_freq,
+                "highpass": highpass,
             }
         else:
 
@@ -157,8 +160,17 @@ class READ_ABR4:
                 "weight": 0.0,
                 "genotype": "ND",
                 "record_frequency": self.sample_freq,
+                "highpass": highpass,
             }
-
+        # before returning, sort the waveforms in ascending order of level.
+        dbs = metadata["stimuli"]["dblist"]
+        print("read dataset wave shape: ", waves.shape)
+        print("original dbs: ", dbs)
+        if dbs[-1] < dbs[0]:
+            print("would need to sort data)")
+            waves = np.flip(waves, axis=0)
+            metadata["stimuli"]["dblist"] = dbs[::-1]
+            exit()
         return waves, tb, metadata
 
 
@@ -205,9 +217,10 @@ class READ_ABR4:
         _type_
             _description_
         """
+
         directory = Path(datapath, subject, subdir)
         if not directory.is_dir():
-            print("Directory: {str(directory):s} was not found")
+            print(f"Directory: {str(directory):s} was not found")
             exit()
 
         print("Directory for data found: ", str(directory))
@@ -237,13 +250,28 @@ class READ_ABR4:
             if not spl_file.is_file():
                 spl_list = np.linspace(20, 90, endpoint=True, num=8)
             else:
-                spl_list = pd.read_csv(spl_file, header=None).values.squeeze()
+                spl_list = pd.read_csv(spl_file, header=None, usecols=[0]).values.squeeze()
+                if len(spl_list) == 0:
+                    spl_list = pd.read_csv(spl_file, header=None).values.squeeze()
             khz_file = Path(run_files[0].parent, f"{run_files[0].name[:14]}kHz.txt")
             if not khz_file.is_file():
                 continue  # probably a click group, so skip the freqs.
-            khz_list = pd.read_csv(khz_file, sep="\t", header=None).values.squeeze()
-
-            khz_list = [k for k in khz_list if not np.isnan(k)]
+            # old
+            khz_list_1 = pd.read_csv(khz_file, sep=r"[ \t\r\n]+", header=None, engine="python").values.squeeze()
+            # sometimes in rows without a return
+            # khz_list_2 = pd.read_csv(khz_file, sep=r"[ \t]+", header=None, engine="python").values.squeeze()
+            # # print(type(khz_list_1), type(khz_list_2), khz_list_1.shape, khz_list_1.ndim, khz_list_2.ndim, khz_list_1.shape, khz_list_2.shape)
+            if khz_list_1.ndim == 0: 
+                khz_list_1 = [khz_list_1]
+            # elif khz_list_1.ndim == 1:
+            #     khz_list = khz_list_1
+            # else:
+            #     khz_list = [khz_list_2]
+            print("\nKhz file: ", khz_file.name)
+            print("    Khz list_1: ", khz_list_1)
+            # print("    Khz list_2: ", khz_list_2)
+            khz_list = [float(k) for k in khz_list_1 if not np.isnan(k)]
+            print("    Khz list: ", khz_list)
             for khz in khz_list:
                 if int(float(khz)) not in frequencies:
                     frequencies.append(int(float(khz)))
@@ -255,7 +283,7 @@ class READ_ABR4:
                         tone_runs_p[run_key] = []
         if len(datafiles) == 0:
             return None, None
-        print(" SPL List : ", spl_list)
+        # print(" SPL List : ", spl_list)
         # now read the data into the dictionaries
         # and assign the data to the appropriate key in the dictionary
         # print("runfiles: ", run_files)
@@ -289,7 +317,11 @@ class READ_ABR4:
                 names=spl_list,
                 engine="python",
             )
-            # print("Read data as : ", data)
+            data = data.values
+
+            if np.isnan(data[-1,:]).any():
+                data[-1,:] = data[-2,:]
+             
             data = np.array(data).T
             for ispl, spl in enumerate(spl_list):
                 spl_asint = int(float(spl))
@@ -402,7 +434,7 @@ class READ_ABR4:
 
         mpl.show()
 
-    def get_clicks(self, datapath, subject, subdir, run, highpass: Union[float, None] = None, fold:bool=False):
+    def get_clicks(self, datapath, subject, subdir, run, sample_freq: float = None, highpass: Union[float, None] = None, fold:bool=False):
         # do a quick check to see if there are subdirectories for tones and clicks:
         # print("subdir: ", subdir)
         if datapath.name == "Click":
@@ -462,6 +494,7 @@ class READ_ABR4:
             names=spllist,
             engine="python",
         )
+
         # fix Nan at end of array in posf data.
         # print(posf.columns)
         # print(posf[spllist[0]].values)
@@ -474,6 +507,7 @@ class READ_ABR4:
         # print("Posf values: ", posf[spllist[0]].values)
         # exit()      
         # print(f"Number of points: {npoints:d}")
+        self.sample_freq = sample_freq
         tb = np.linspace(0, npoints * (1.0 / self.sample_freq), npoints)
 
         npoints = tb.shape[0]
@@ -484,7 +518,7 @@ class READ_ABR4:
             tb = tb[:n2]
         else:
             waves = np.zeros((len(posf.columns), len(self.frlist), npoints))
-            
+
         # app = pg.mkQApp("summarize abr4 output")
         # win = pg.GraphicsLayoutWidget(show=True, title="ABR Data Plot")
         # win.resize(800, 600)
@@ -581,7 +615,6 @@ class READ_ABR4:
             abr_data=w,
             tb=t,
             stim_type=datatype,
-            highpass=highpass,
             scale="V",
             V_stretch=0.5,
             dblist=self.dblist,
