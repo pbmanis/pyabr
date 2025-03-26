@@ -84,10 +84,10 @@ class READ_ABR4:
             raise ValueError(f"Unknown datatype: {datatype:s}")
         
         if datatype == "Click":
-            sample_freq = 50000. # click data is sampled at 50 kHz
+            sample_freq = 100000. # click data is sampled at 50 pr 100 kHz
             # find click runs for this subject:
             click_runs = self.find_click_files([datapath], subject="", subdir="")
-            print("click runs: ", click_runs)
+            # print("click runs: ", click_runs)
             if len(click_runs) == 0:
                 return None, None
             for run in click_runs:
@@ -195,7 +195,7 @@ class READ_ABR4:
                     }
                     df_datetime = f"{df.name[:14]}SPL.txt"
                     # print(df_datetime, re.match(re_spl, df_datetime))
-            print("Found runs: ", click_runs)
+            # print("Found runs: ", click_runs)
             return click_runs
 
     def find_tone_files(self, datapath, subject, subdir, highpass: Union[float, None] = None, fold:bool=False):
