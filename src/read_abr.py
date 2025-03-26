@@ -48,7 +48,7 @@ re_tone_file = re.compile(r"^(?P<datetime>([\d]{8}-[\d]{4}))-n-(?P<frequency>([0
 re_pyabr3_interleaved_tone_file = re.compile(
     r"^(?P<datetime>([\d]{4}-[\d]{2}-[\d]{2}))_interleaved_plateau_(?P<serial>([0-9]{3}_[0-9]{3})).p$"
 )
-re_subject = re.compile(
+re_subject = re.compile( 
     r"(?P<strain>([A-Za-z]{3,10}))[_ ]{1}(?P<sex>([M|F]{1}))[_ ]{1}(?P<subject>([A-Z0-9]{4}))[_ ]{1}(?P<age>([p|P\d]{1,4}))[_ ]{1}(?P<date>([0-9]{0,8}))[_ ]{0,1}(?P<treatment>([A-Za-z]{2}))"
 )
 
@@ -613,11 +613,7 @@ class AnalyzeABR:
                         plot_data = added_gain * abr_data[0, i, :] / amplifier_gain
                     else:
                         plot_data = added_gain * abr_data[i, j, :] / amplifier_gain
-                    # print(db, thresholds, j, thresholds[j])
-                    # print(type(thresholds), type(thresholds[j]), type(db))
 
-                    # print(isinstance(thresholds, list))
-                    # print(np.abs(db - thresholds[j]))
                     if isinstance(thresholds, list) and np.abs(db-thresholds[j]) < 1:
                         CP.cprint("c", f"** Found threshold, db: {db!s}, threshold: {thresholds[j]!s}")
                         ax.plot(
@@ -1184,7 +1180,7 @@ def get_categories(subjects, categorize="treatment"):
     return categories
 
 
-def get_analyzed_click_data(filename, AR, ABR4, subj, HPF, maxdur, scale:float=1.0):
+def get_analyzed_click_data(filename, AR, ABR4, subj, HPF, maxdur, scale:float=1.0, invert:bool=False):
     pfiles = list(Path(filename).glob("*_click_*.p"))
     # f, ax = mpl.subplots(1, 1)  # for a quick view of the data
     if len(pfiles) > 0:
@@ -1195,6 +1191,8 @@ def get_analyzed_click_data(filename, AR, ABR4, subj, HPF, maxdur, scale:float=1
         # print("metadata: ", metadata, pfiles[0])
 
         waves *= scale
+        if invert:
+            waves = -waves
         print("get analyzed click data:: metadata: ", metadata)
         print("gacd: wave shape: ", waves.shape)
         print("gacd: Max time: ", np.max(tb), "sample rate: ", metadata["record_frequency"])
@@ -1208,6 +1206,8 @@ def get_analyzed_click_data(filename, AR, ABR4, subj, HPF, maxdur, scale:float=1
             highpass=HPF,
         )
         waves *= scale
+        if invert:
+            waves = -waves
         # print("Read waves, shape= ", waves.shape)
         # print("metadata: ", metadata)
     dbs = metadata["stimuli"]["dblist"]
@@ -1409,7 +1409,7 @@ def plot_click_stacks(
             ax_plot=axlist[fnindex],
         )
     else:
-        print("Subject: ", subject, "not in examples: ", example_subjects)
+        # print("Subject: ", subject, "not in examples: ", example_subjects)
         return
 
 
@@ -1428,6 +1428,51 @@ def remap_xlabels(ax):
     ax.set_xticks(range(len(labels)))  # need to do this to make sure ticks and labels are in sync
     ax.set_xticklabels(labels)
 
+def set_gain_and_scale(subj, AR):
+    # Set minimum latency and gain values from the configuratoin file
+    if "ABR_parameters" not in AR.experiment.keys():
+        raise ValueError("'ABR_parameters' missing from configuration file")
+    
+    scd = AR.experiment["ABR_parameters"]  # get the parameters dictionary
+    if 'default' not in scd.keys():
+        raise ValueError("'default' values missing from ABR_parameters")
+    
+    # print("Parameters: ", scd)
+    # set the defaults.
+    scale = scd['default']['scale']
+    invert = scd['default']['invert']
+    min_lat = scd['default']["minimum_latency"]
+    # print("ABR keys: ", list(AR.experiment["ABR_parameters"].keys()))
+
+    # if the full name is in the parameter list, use it
+    if subj["name"] in list(AR.experiment["ABR_parameters"].keys()):
+        CP.cprint("g", f"\nsubject name: {subj['name']!s} is in experiment ABR_parameters list")
+        scale = scd[subj["name"]]["scale"]
+        invert = scd[subj["name"]]["invert"]
+        min_lat = scd[subj["name"]]["minimum_latency"]
+        fit_index = scd[subj["name"]]["fit_index"]
+
+    else:
+        CP.cprint("r", f"\nsubject name: {subj['name']!s} is NOT experiment ABR_parameters list - checking abbreviated versions")
+        smatch = re_subject.match(subj["name"])
+        CP.cprint("m", f"SMATCH: {smatch, subj['name']:s}")
+        if smatch["subject"] is not None:
+            sname = smatch["subject"]
+            if sname.startswith("N0*"):
+                scale = scd['N0*']['scale']
+                invert = scd['N0*']['invert']
+                min_lat = scd['N0*']["minimum_latency"]
+                fit_index = scd['N0*']["fit_index"]
+            elif sname.startswith("T0*"):
+                scale = scd['T0*']['scale']
+                invert = scd['T0*']['invert']
+                min_lat = scd['T0*']["minimum_latency"]
+                fit_index = scd['T0*']["fit_index"]
+            else:
+                raise ValueError(f"Subject name {sname:s} not recognized as a category for scaling")
+        else:
+            raise ValueError(f"Subject name {subj['name']:s} not in configuration ABR_parameters dictionary")
+    return scale, invert, min_lat, fit_index
 
 def do_one_subject(
     subj: dict,
@@ -1453,14 +1498,14 @@ def do_one_subject(
     dbs = []
     threshold_index = None
     waveana = None  # in case the analysis fails or the dataset was excluded
-    print("requested file type: ", requested_stimulus_type)
+    # print("requested file type: ", requested_stimulus_type)
     if requested_stimulus_type in ["Click", "Tone", "Interleaved_plateau"]:
         fns = list(subj["filename"].glob("*"))
     else:
         raise ValueError("Requested stimulus type not recognized")
     stim_type = None
     fns = [f for f in fns if not f.name.startswith(".")]
-    for filename in fns:
+    for filename in sorted(fns):
         # check to see if we have done this file already (esp. ABR4 files)
         fname = filename.name
         if fname.startswith("."):  # skip hidden files
@@ -1471,7 +1516,7 @@ def do_one_subject(
             if filematch.group(1) in donefiles:
                 break
             else:
-                print(f"    ABR4 File {fname:s} now being processed...")
+                # print(f"    ABR4 File {fname:s} now being processed...")
                 donefiles.append(filematch.group(1))
         else:
             # might be a new pyabr3 click file?
@@ -1482,38 +1527,20 @@ def do_one_subject(
                     # print(f"    pyabr3 File {fname:s} has not been processed, continuing")
                     donefiles.append(fname[:15])
         scale = 1
-        rescale = True
-        order = "normal"
-        print("subject name: " ,subj["name"], subj["name"][6])
-        if subj["name"] in [
-            "CBA_M_N007_p29_NT",
-            "CBA_F_N003_p27_NT",
-            "CBA_M_N004_p29_NT",
-            "CBA_M_N005_p29_NT",
-            "CBA_M_N006_p29_NT",
-            # "CBA_F_R015_P16_NT_CBA15",
-        ]:
-            rescale = True
-            scale = 1e-4
-        if subj["name"][6] == "R":  # Ruili data set
-            rescale = True
-            scale = 1e-1
-        elif subj["name"][6] == "T":  # Tessa data set
-            rescale = True
-            scale = 1e-1
-        elif subj["name"][6] == "N":  # Reggie data set
-            rescale = True
-            scale = 1
 
+        CP.cprint("c", f"Testing for subject name: {subj['name']:s}, {subj['name'][6]:s}")
 
         if subj["name"] in list(AR.experiment["ABR_subject_excludes"].keys()):
-            print("Exclusion files: ", AR.experiment["ABR_subject_excludes"].keys())
-            CP.cprint("r", f"Excluding: {subj['name']: s}")
+            # print("Exclusion files: ", AR.experiment["ABR_subject_excludes"].keys())
+            CP.cprint("r", f"Excluding subject file: {subj['name']: s}")
             continue
+        
+        scale, invert, min_lat, fit_index = set_gain_and_scale(subj, AR)
+
         fname = filename.name.lower()
         # determine the stimulus type.
         stim_type = None
-        print("sub filename: ", subj["filename"].name)
+        print("subject data type: ", subj["filename"].name)
         match requested_stimulus_type:
             case "Click":
                 if (
@@ -1539,7 +1566,7 @@ def do_one_subject(
         CP.cprint("g", f"    ***** do one subj: stim_type: {stim_type!s}, {fname:s}")
         if stim_type is None:
             return subject_threshold, None, None, None, None, None
-        print("do one sub req ::  stim type: ", requested_stimulus_type)
+        # print("do one sub req ::  stim type: ", requested_stimulus_type)
         if requested_stimulus_type == "Click":
             filename = Path(filename).parent
             CP.cprint("g", f"    ***** do one sub: filename: {filename!s}")
@@ -1551,21 +1578,17 @@ def do_one_subject(
                 AR.experiment["ABR_settings"]["HPF"],
                 AR.experiment["ABR_settings"]["maxdur"],
                 scale=scale,
+                invert=invert,
             )
             CP.cprint("g", f"    ***** do one subj: dbs: {dbs!s}")
-            waveana.get_triphasic(min_lat=0.0022, dev=3, invert=True)
-            if len(dbs) < 5:
-                tindex = 2
-            else:
-                tindex = 4
+            waveana.get_triphasic(min_lat=min_lat, dev=3)
+
             waveana.rms_baseline = waveana.rms_baseline * 1./metadata["amplifier_gain"]
-            fitline_n1, fitline_p1 = waveana.adjust_triphasic(dbs, threshold_index=tindex , window=0.0005)  # adjust the measures to follow a line of latency when the response gets small.
+            fitline_n1, fitline_p1 = waveana.adjust_triphasic(dbs, threshold_index=fit_index , window=0.0005)  # adjust the measures to follow a line of latency when the response gets small.
             waveana.ppio = waveana.ppio * 1./metadata["amplifier_gain"]
 
             metadata["stimuli"]["dblist"] = dbs
-            # print(waveana.p1n1p2_amplitudes)
-            # print(waveana.p1n1_amplitudes)
-            # since we have already grabbed the data and scaled it,
+
             # here we check to see if our current file is one of the example
             # subjects, and plot the traces if it is.
             plot_click_stacks(
@@ -1609,7 +1632,7 @@ def do_one_subject(
             # some non-monotonicity in the data.
             imax_index = np.argmax(waveana.p1n1_amplitudes)
             imax_amp = list(range(imax_index))
-            print("rms baseline: ", waveana.rms_baseline)
+            # print("rms baseline: ", waveana.rms_baseline)
             threshold_value, threshold_index, fit = fit_thresholds.fit_thresholds(
                 np.array(dbs)[imax_amp],
                 np.array(waveana.p1n1p2_amplitudes)[imax_amp],
@@ -1629,7 +1652,7 @@ def do_one_subject(
             test_plots = True
             if test_plots:
                 f, ax = mpl.subplots(1,2, figsize = [8, 5])
-                print(filename, subj["filename"].name)
+                # print(filename, subj["filename"].name)
                 plot_click_stacks(
                     AR,
                     example_subjects=[subj["filename"].parent.name],
@@ -1641,8 +1664,9 @@ def do_one_subject(
                     axlist=[ax[0]],
                 )
                 ax[0].plot(dbs, waveana.p1_latencies, '-', color='r')
-                ax[0].plot(np.array(fitline_n1)*1e3, np.array(dbs)/2, '-', color='r')
-                ax[0].plot(np.array(fitline_p1)*1e3, np.array(dbs)/2, '-', color='b')
+                ax[0].plot(np.array(fitline_n1)*1e3, np.array(dbs)/2 - dbs[0]/2, '-', color='b')
+                ax[0].plot(np.array(fitline_p1)*1e3, np.array(dbs)/2 - dbs[0]/2, '-', color='r')
+                
                 ax[1].plot(dbs, waveana.p1n1_amplitudes, 'o-', color='k')
                 ax[1].plot(fit[0], fit[1], '-', color='r')
 
@@ -1668,15 +1692,15 @@ def do_one_subject(
         else:
             print("stimulus type not recognized", requested_stimulus_type)
             exit()
-    CP.cprint(
-        "g",
-        f"\n   *****  do one subject ({fns[0]!s}): # of thresholds measured:  {len(subject_threshold):d}, thrs: {subject_threshold!s}\n",
-    )
+
     if len(subject_threshold) == 0:
         subject_threshold = [np.nan]
     if waveana is None:
         return subject_threshold, None, None, None, None, None
-    print("requested stimulus type: ", requested_stimulus_type, "stim_type: ", stim_type, filename)
+    CP.cprint(
+        "g",
+        f"\n   *****  do one subject ({fns[0]!s}): # of thresholds measured:  {len(subject_threshold):d}, thrs: {subject_threshold!s}\n",
+    )
     return subject_threshold, subject_ppio, dbs, threshold_index, waveana, stim_type
 
 def stuffs(filename, sub, directory_name, HPF, maxdur):
@@ -2019,16 +2043,14 @@ def compute_click_io_analysis(
 
     treat = "NT"  # for no treatment
     baseline_dbs = []
-    # subjs = [subj for subj in subjs if not subj.name.startswith(".")]
+
     for subj in subjs:  # get data for each subject
         if subj["name"] in AR.experiment["ABR_subject_excludes"]:
             continue
         print("subj: ", subj["name"])
-        # if subj["name"] not in ["CBA_M_N005_p29_NT"]:
-        #     continue
         CP.cprint("m", f"\nSubject: {subj!s}")
-        # if subj.name.startswith("."):
-        #     continue
+
+
         if categorize == "treatment":
             treat = get_treatment(subj)
         elif categorize == "age":
