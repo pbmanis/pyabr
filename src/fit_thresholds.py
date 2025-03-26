@@ -11,9 +11,9 @@ def fit_thresholds(x, y, baseline, threshold_factor=2.5, spl_range=[1, 90]):
         return vmax / (1.0 + (v50 / x) ** n)
 
     Hillmodel = Model(hill)
-    Hillmodel.set_param_hint("vmax", min=0.0, max=25.0)
+    Hillmodel.set_param_hint("vmax", min=0.0, max=50.0)
     Hillmodel.set_param_hint("v50", min=20.0, max=100.0)
-    Hillmodel.set_param_hint("n", min=0.5, max=20.0)
+    Hillmodel.set_param_hint("n", min=0.1, max=50.0)
 
     params = Hillmodel.make_params(vmax=5, v50=50.0, n=2)
     x = np.array(x)
