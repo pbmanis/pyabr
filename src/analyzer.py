@@ -98,7 +98,7 @@ class Analyzer(object):
             pp[i] = np.max(self.waves[i, tx]) - np.min(self.waves[i, tx])
         return pp
 
-    def get_triphasic(self, min_lat: float = 0.0022, min_diff=0.0003, dev: float = 2.5, invert: bool = False):
+    def get_triphasic(self, min_lat: float = 0.0022, min_diff=0.0003, dev: float = 2.5):
         """Use Brad Buran's peakdetect routine to find the peaks and return
         a list of peaks. Works 3 times - first run finds all the positive peaks,
         and the second run finds the negative peaks that *follow* the positive
@@ -118,8 +118,7 @@ class Analyzer(object):
         dev : float, optional
             "deviation" or threshold, by default 2.5 x the reference or
             baseline time window.
-        sign: float, optional
-            set to -1 to invert waveform, otherwise use as is.
+
         """
 
         p1 = {}
@@ -128,9 +127,7 @@ class Analyzer(object):
 
         if self.waves.shape[0] == 1:
             self.waves = self.waves[0]
-        waves = self.waves.copy()  # allow inversion without disturbing the input.
-        if invert:
-            waves = -waves
+        waves = self.waves.copy()
         for j in range(waves.shape[0]):
             p1[j] = peakdetect.find_np(
                 self.sample_freq,  # in Hz
@@ -217,9 +214,9 @@ class Analyzer(object):
         dbs = np.array(dbs)
         for j, spl in enumerate(dbs[fit_data]):
             if spl > threshold_value:  # only use values above the rms threshold
-                latmap_n1.append(self.p1_latencies[fit_data][j])  # get latency for first value
+                latmap_p1.append(self.p1_latencies[fit_data][j])  # get latency for first value
                 spllat.append(spl)
-                latmap_p1.append(self.n1_latencies[fit_data][j])  # get latency for second value
+                latmap_n1.append(self.n1_latencies[fit_data][j])  # get latency for second value
         if len(latmap_n1) > 2:
             lat_n1 = np.polyfit(spllat, latmap_n1, 1)
             fitline_n1 = np.polyval(lat_n1, dbs)
