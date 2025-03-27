@@ -5,7 +5,8 @@ A python program to do abrs with TDT systems (RP2.1, PA5, and possibily with
 RZ/RX processors) and an NI DAC.
 
 Installation (Windows)
-===========================
+----------------------
+
 Data acquisiton only works under windows.
 
 Install Python3.12 from the python.org site (don't use the Microsoft site)
@@ -47,7 +48,7 @@ with interactions with the graphics. The live graphs can be zoomed or panned; th
 on the next stimulus cycle. 
 
 Installation (mac os)
-=====================
+---------------------
 Note: Install on mac os only provides data analysis, not data acquisition.
 
 Run the script:
@@ -64,9 +65,38 @@ source pyabr_venv/bin/activate
 ```
 
 Analysis
-========
+--------
 Analysis is provided by the script *read_abr.py*. 
 This program will need access to a configuration file (see the __main__ section for how this is set up).
+As currently configured, it will be necessary to edit the read_abr.py file in order to
+do analysis. Items such as paths to data, specifics about file names, etc, will have to be
+adjusted for your configuration. 
+
+The program expects the data to be in a specific structure under a directory:
+experimental_directory_name:
+    Subject_identifier (a directory)
+        Clicks
+            either matlab output (.txt files) or .p files from pyabr3
+        Tones
+            matlab output (.txt files)
+        Interleaved_plateau
+            pyabr3 output, .p files.
+
+The names Clicks, Tones and Interleaved_plateau are hard-coded.
+the subject identifier is expected to have a specific format:
+"CBA_M_SUBID_p48_(date)_etc."
+
+Where:
+```
+    CBA is the strain or cross identifier 
+    M or F is the sex
+    SUBID is a 1-2 letter identifier, followed by 1-3 numbers. 
+    p48 is the age (in postnatal days)
+    (date) is an optional date string, 
+    or in some cases, a combined animal identifier.
+```
+
+
 
 The configuration file (in pyqtgraph configuration format) must have:
 
@@ -120,7 +150,7 @@ are listed if there are to be any changes. All fields must be specified for each
 subject. 
 
 Included modules
-================
+----------------
 
 pysounds
 --------
@@ -129,27 +159,28 @@ A set of modules that provide auditory stimulus generation, including hardware c
 
 It includes:
 
-sound.py
---------
+_sound.py_
+
 A collection of routines that generate sound waveforms. Uses DMR.py for dynamic ripple, 
 
-pystim.py
----------
+_pystim.py_
+
 A module that interacts with some hardware (Rp2.1, PA5, RZ5D, nidaq, and soundcards) to play
 generated sounds.
 
-pysounds.py
------------
+_pysounds.py_
+
 An early verion module that only knows about the RP2.1, PA5, and nidaq. 
 
-calreader.py
-------------
+_calreader.py_
+
+
 Read and display calibration files generated in matlab ABR program.
 
-stimController
---------------
+_stimController_
 
-This module suite provides the following in conjunction with TDT hardware:
+
+*This module suite provides the following in conjunction with TDT hardware:*
 
 1. Generation of waveforms for acoustic stimulation, including tones, clicks, noises, bandpass and notched noise, modulated tones and noises, RSS, DMR, and comodulated masking stimuli (not all are currently implemented).
 
@@ -163,12 +194,12 @@ This module suite provides the following in conjunction with TDT hardware:
 
 
 This sofware does not provide:
-==============================
+------------------------------
 
 1. Complex stimulus control.
 
 This software does provide:
-===========================
+---------------------------
 
 1. data acquisition
 2. data analysis. However, the analysis module is somewhat customized, and the
