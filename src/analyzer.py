@@ -161,9 +161,9 @@ class Analyzer(object):
         self.p1n1p2 = {"p1": p1, "n1": n1, "p2": p2}
         nws = self.waves.shape[0]
         self.p1_latencies = np.zeros(nws)*np.nan
-        self.p1_amp = np.zeros(nws)*np.nan
+        self.p1_amplitudes = np.zeros(nws)*np.nan
         self.n1_latencies =np.zeros(nws)*np.nan
-        self.n1_amp = np.zeros(nws)*np.nan
+        self.n1_amplitudes = np.zeros(nws)*np.nan
         self.p1_indices = [0]*nws
         self.n1_indices = [0]*nws
         self.p1n1p2_amplitudes = np.zeros(nws)*np.nan
@@ -182,9 +182,9 @@ class Analyzer(object):
             self.p1n1p2_amplitudes[j] = float(p1n1p2_j)
             self.p1n1_amplitudes[j] = float(p1n1_i)
             self.p1_latencies[j] = float(p1_lat)
-            self.p1_amp[j] = float(waves[j, p1_index])
+            self.p1_amplitudes[j] = float(waves[j, p1_index])
             self.n1_latencies[j] = float(n1_lat)
-            self.n1_amp[j] = float(waves[j, n1_index])
+            self.n1_amplitudes[j] = float(waves[j, n1_index])
             self.p1_indices[j] = p1_index
             self.n1_indices[j] = n1_index
 
@@ -215,29 +215,30 @@ class Analyzer(object):
         for j, spl in enumerate(dbs[fit_data]):
             if spl > threshold_value:  # only use values above the rms threshold
                 latmap_p1.append(self.p1_latencies[fit_data][j])  # get latency for first value
-                spllat.append(spl)
                 latmap_n1.append(self.n1_latencies[fit_data][j])  # get latency for second value
-        if len(latmap_n1) > 2:
-            lat_n1 = np.polyfit(spllat, latmap_n1, 1)
-            fitline_n1 = np.polyval(lat_n1, dbs)
+                spllat.append(spl)
+        if len(latmap_p1) > 2:
             lat_p1 = np.polyfit(spllat, latmap_p1, 1)
-            fitline_p1 = np.polyval(lat_p1, dbs)
-
-
+            fitline_p1_lat = np.polyval(lat_p1, dbs)  # get latencies for all sound levels
+            lat_n1 = np.polyfit(spllat, latmap_n1, 1)
+            fitline_n1_lat = np.polyval(lat_n1, dbs)
+        else:
+            fitline_p1_lat = np.zeros(len(dbs))
+            fitline_n1_lat = np.zeros(len(dbs))
         for j, spl in enumerate(dbs):
             if spl > threshold_value:
                 continue  # don't change if above rms threshold
-            ti_n1 = np.abs(fitline_n1[j] - self.timebase).argmin()
-            ti_p1 = np.abs(fitline_p1[j] - self.timebase).argmin()
+            ti_n1 = np.abs(fitline_n1_lat[j] - self.timebase).argmin()  # get data closest to fit latency
+            ti_p1 = np.abs(fitline_p1_lat[j] - self.timebase).argmin()
             self.p1_latencies[j] = self.timebase[ti_p1]
-            self.p1_amp[j] = self.waves[j, ti_p1]
+            self.p1_amplitudes[j] = np.mean(self.waves[j, ti_p1-10:ti_p1+10])
             self.n1_latencies[j] = self.timebase[ti_n1]
-            self.n1_amp[j] = self.waves[j, ti_n1]
-            self.p1n1_amplitudes[j] = self.p1_amp[j] - self.n1_amp[j]
-        
-            # self.p1_amplitude[j] = self.p1_amp[closest]
-            # self.n1_amplitude[j] = self.n1_amp[closest]
-        return fitline_n1, fitline_p1
+            self.n1_amplitudes[j] = np.mean(self.waves[j, ti_n1-10:ti_n1+10])
+            # require the p1 be larger than the n1 - otherwise we are looking at noises
+            self.p1n1_amplitudes[j] = max(self.p1_amplitudes[j] - self.n1_amplitudes[j], 0.)
+
+        self.fitline_p1_lat = fitline_p1_lat
+        self.fitline_n1_lat = fitline_n1_lat
 
 
     def measure_rms(self, time_window: Union[List, np.ndarray]) -> np.ndarray:
@@ -260,7 +261,7 @@ class Analyzer(object):
         rms = np.zeros(self.waves.shape[0])
         for i in range(self.waves.shape[0]):
             rms[i] = np.std(self.waves[i][tx])
-        # print("measure rms: ", np.max(self.waves), np.min(self.waves), np.max(rms))
+        # print("measure rms: ", np.max(self.waves), np.min(self.waves), np.max(rms), np.mean(rms), time_window)
         return rms
 
     def gettimeindices(self, tr):
