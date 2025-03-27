@@ -50,6 +50,7 @@ class READ_ABR4:
         subject: str,
         datapath: Union[Path, str],  # path to the data (.txt files are in this directory)
         datatype: str = "Click",
+        sample_frequency: float = 100000.0,
         subdir: str = "Tone",  # or "Clicks"
         run: str = "20220518-1624",
         highpass: Union[float, None] = None,
@@ -84,7 +85,6 @@ class READ_ABR4:
             raise ValueError(f"Unknown datatype: {datatype:s}")
         
         if datatype == "Click":
-            sample_freq = 100000. # click data is sampled at 50 pr 100 kHz
             # find click runs for this subject:
             click_runs = self.find_click_files([datapath], subject="", subdir="")
             # print("click runs: ", click_runs)
@@ -92,14 +92,14 @@ class READ_ABR4:
                 return None, None
             for run in click_runs:
                 waves, tb = self.get_clicks(
-                    datapath, subject, subdir, click_runs[run], sample_freq=sample_freq, highpass=highpass,
+                    datapath, subject, subdir, click_runs[run], sample_freq=sample_frequency, highpass=highpass,
                     fold = fold
                 )
                 self.sample_freq = 1./np.mean(np.diff(tb))
                 print("self sample freq; ", self.sample_freq)
 
         elif datatype == "Tone":
-            self.sample_freq = 100000.  # tone data is sampled at 100 kHz
+            self.sample_freq = sample_freq  # tone data is sampled at 100 kHz
             tone_runs_avg, tb = self.find_tone_files(datapath, "", "", highpass=highpass, fold=fold)
             if tone_runs_avg is None:
                 return None, None     
