@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 """
-pyabr : a python program for ABR recordings. 
+pyabr3 : a python program for ABR recordings. 
 Parameter setup is defined in config/.cfg files (text files)
 
 This program uses pystim for hardware control,
 and sound.py for stimulus generation. 
+
+2024-2025 Paul B. Manis
+
 """
 
 import atexit
@@ -37,9 +40,6 @@ import src.message_box as MBox
 MAX_CLICK = 105.1  # SPL for maximum click
 
 THREAD_PERIOD = 20  # thread period, in msec
-
-
-
 
 
 class PyABR(QtCore.QObject):
@@ -555,12 +555,8 @@ class PyABR(QtCore.QObject):
             Path.mkdir(data_directory, exist_ok=True)  # create if it does not exist.
         if self.basefn is None:
             self.basefn = write_time.strftime("%Y-%m-%d")
-        # print("base fn", self.basefn)
         subject_data["Subject ID"] = "testing"
-        # print("data dir: ", data_directory)
-        # print("subject: ", subject_data['Subject ID'])
         self.subject_dir = Path(self.config["datapath"], self.basefn, subject_data["Subject ID"])
-        # Path.mkdir(self.subject_dir, exist_ok = True)
         fn = Path(
             f"abr_data/{self.basefn:s}_{self.protocol['protocol']['stimulustype']:s}_{wave_counter:03d}_{repetition_counter:03d}"
         )
