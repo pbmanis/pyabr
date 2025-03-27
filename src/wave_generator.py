@@ -7,6 +7,18 @@ import src.sound as sound
 import src.protocol_reader as protocol_reader
 import src.read_calibration as read_calibration
 
+    """ Wave generator : part of pyabr3
+    This class generates a clicks, tone pips, and "interleaved ramps"
+    for use in ABR experiments. The waveforms are generated at the maximal
+    voltage, and attenuated using the attenuators on the TDT system.
+
+    Genearlly, the waveforms are generated at a high sample rate (250-500 kHz)
+    to minimize distortion. For this we use a National Instruments NI6371 DAC
+    card. The waveforms are then attenuated using the PA5 attenuators,
+    Some attention is paid to trying to maximize the dynamic range, as the
+    DAC is "only" 16 bits (96 dB).
+  
+    """
 
 class WaveGenerator:
     def __init__(self, caldata):
