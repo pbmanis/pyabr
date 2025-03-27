@@ -1,4 +1,5 @@
-# Define parameters that control aquisition and buttons...
+# Define parameters that control aquisition and buttons for pyabr3
+
 from pyqtgraph.parametertree import Parameter, ParameterTree
 
 def build_parametertree(known_protocols, current_protocol, stimuli:dict):
