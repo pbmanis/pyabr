@@ -18,7 +18,7 @@ tht might be required for some small animal (mouse) ABRs.
 Hardware on the Manis Lab Rig 5 (ABR) system includes:
 RP2.1 (vintage)
 RZ5D
-NI6731 (high speed 4 channel 16-bit dac)
+NI6371 (high speed 4 channel 16-bit dac)
 2 x PA5 attenuators
 
 If the system sound card is used, stimuli are generated. This is used only for testing.
@@ -33,7 +33,7 @@ Department of Otolaryngology/Head and Neck Surgery
 Supported by NIH Grants DC000425, DC004551 and DC015093 to PBM.
 Tessa J. Ropp, Ph.D. also contributed to the development of this code.
 
-Refactored and modified version, includes access to rz5d to help synchronize acquisition.
+Refactored and modified version, includes access to RZ5D to help synchronize acquisition.
 August, 2017 and later.
 
 The Python requirements are listed in the requirements.txt file in the root directory of the repository.
@@ -41,8 +41,8 @@ Other requirements include:
 nidaqmx for Python (https://nidaqmx-python.readthedocs.io/en/latest/)
 pyaudio (https://people.csail.mit.edu/hubert/pyaudio/, or more recent versions; only for testing
 when other hardware is not available).
-tdt rco/rcx/rpx files for the TDT system. These are/were created with RPvdsEx, and should
-reside in the tdt directory of the repository. The rco files are compiled versions of the
+TDT rco/rcx/rpx files for the TDT system. These are/were created with RPvdsEx, and should
+reside in the TDT directory of the repository. The .rco files are compiled versions of the
 rcx files, and are used by the RP2.1 and RZ5D systems to control the hardware.
 
 """

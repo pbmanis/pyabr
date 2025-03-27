@@ -99,7 +99,7 @@ class READ_ABR4:
                 print("self sample freq; ", self.sample_freq)
 
         elif datatype == "Tone":
-            self.sample_freq = sample_freq  # tone data is sampled at 100 kHz
+            self.sample_freq = sample_frequency  # tone data is sampled at 100 kHz
             tone_runs_avg, tb = self.find_tone_files(datapath, "", "", highpass=highpass, fold=fold)
             if tone_runs_avg is None:
                 return None, None     
@@ -267,11 +267,11 @@ class READ_ABR4:
             #     khz_list = khz_list_1
             # else:
             #     khz_list = [khz_list_2]
-            print("\nKhz file: ", khz_file.name)
-            print("    Khz list_1: ", khz_list_1)
-            # print("    Khz list_2: ", khz_list_2)
+            # print("\nKhz file: ", khz_file.name)
+            # print("    Khz list_1: ", khz_list_1)
+            # # print("    Khz list_2: ", khz_list_2)
             khz_list = [float(k) for k in khz_list_1 if not np.isnan(k)]
-            print("    Khz list: ", khz_list)
+            # print("    Khz list: ", khz_list)
             for khz in khz_list:
                 if int(float(khz)) not in frequencies:
                     frequencies.append(int(float(khz)))
