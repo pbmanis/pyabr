@@ -152,11 +152,6 @@ subject.
 Included modules
 ----------------
 
-pysounds
---------
-
-A set of modules that provide auditory stimulus generation, including hardware control.
-
 It includes:
 
 _sound.py_
@@ -168,12 +163,12 @@ routines are included.
 
 _pystim.py_
 
-    A module that interacts with some hardware (Rp2.1, PA5, RZ5D, nidaq, and soundcards) to play
+    A module that interacts with some hardware (RP2.1, PA5, RZ5D, NIDAQ, and soundcards) to play
 generated sounds.
 
 _pysounds.py_
 
-    An early verion module that only knows about the RP2.1, PA5, and nidaq. This is in the
+    An early verion module that only knows about the RP2.1, PA5, and NIDAQ. This is in the
 *archived* folder.
 
 _calreader.py_
@@ -207,8 +202,10 @@ This software does provide:
 2. data analysis. However, the analysis module is somewhat customized, and the
 script will need to be modified (e.g., paths, datasets, etc) in order for it to be useful.
 
+Dependencies
+------------
 
-
-
+See the requirements.txt file for dependencies needed for installation
+Note specifically the need for tdtpy, 
 
 * Tested with NI6371 only.

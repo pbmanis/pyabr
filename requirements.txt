@@ -10,8 +10,6 @@ pytest==4.5.0
 toml
 
 # Specific requirements
-pyabf
-sympy
 nidaqmx
 matplotlib>=3.9
 pandas
@@ -22,11 +20,12 @@ psutil>=6.1.0
 pyparsing==2.4.0
 resampy>=0.4
 scipy>1.5.0
-pyaudio  # this will have to be done manually
+pyaudio  # this might have to be done manually
 # get pyaudio win-amd64.whl file from https://www.lfd.uci.edu/~gohlke/pythonlibs/
 # make a downloads file in pysounds, and put it in the downloads directory
 # 11/2024: Gohlke's site is permanently down. 
-# 
+# 11/2024: It looks like a precompiled windows version is available for python3.13 on PyPI.
+# so, this should work.
 pyqt6>=6.7
 pyqt6-sip>=13.8
 pyqtgraph>=0.13.7
@@ -36,5 +35,6 @@ pyqtgraph>=0.13.7
 # ephys @ git+https://github.com/pbmanis/ephys.git#egg=ephys
 # pylibrary @ git+https://github.com/pbmanis/pylibrary.git#egg=pylibrary@bd03b58
 # -e C:/Users/experimenters/Desktop/Python/pylibrary
--e /Users/pbmanis/Desktop/Python/pylibrary
-# tdtpy
+pylibrary @ git+https://github.com/pbmanis/pylibrary.git#egg=pylibrary
+#-e /Users/pbmanis/Desktop/Python/pylibrary
+tdtpy; platform_system == "Windows"
