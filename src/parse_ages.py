@@ -1,7 +1,14 @@
 import re
 
+"""
+Ages should be stored in ISO8601 standard format. 
+This is a simple function to convert age descriptions in various
+formats to the ISO standard. After all, no one types the ages
+correctly on the first try....
 
-# clean up the age string to match (mostly) the ISO standard
+Missing ages are set to P0D.
+"""
+
 def ISO8601_age(agestr):
     """Convert somewhat random age designators input by users to ISO standard, e.g.:
         postnatal day 30 mouse = P30D  (or P30W, or P3Y)
