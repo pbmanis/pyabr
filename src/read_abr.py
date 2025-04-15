@@ -48,7 +48,7 @@ re_tone_file = re.compile(r"^(?P<datetime>([\d]{8}-[\d]{4}))-n-(?P<frequency>([0
 re_pyabr3_interleaved_tone_file = re.compile(
     r"^(?P<datetime>([\d]{4}-[\d]{2}-[\d]{2}))_interleaved_plateau_(?P<serial>([0-9]{3}_[0-9]{3})).p$"
 )
-re_subject = re.compile( 
+re_subject = re.compile(
     r"(?P<strain>([A-Za-z]{3,10}))[_ ]{1}(?P<sex>([M|F]{1}))[_ ]{1}(?P<subject>([A-Z0-9]{4}))[_ ]{1}(?P<age>([p|P\d]{1,4}))[_ ]{1}(?P<date>([0-9]{0,8}))[_ ]{0,1}(?P<treatment>([A-Za-z]{2}))"
 )
 
@@ -88,7 +88,7 @@ class AnalyzeABR:
             # to be consistent with the old ABR4 program, we leave
             # the first 1 msec prior to the stimulus in the data array
             delay = float(d["protocol"]["stimuli"]["delay"])
-            i_delay = int((delay-1e-3) * d["record_frequency"])
+            i_delay = int((delay - 1e-3) * d["record_frequency"])
             d["data"] = d["data"][i_delay:]
             d["data"] = np.append(d["data"], np.zeros(i_delay))
         return d
@@ -222,7 +222,7 @@ class AnalyzeABR:
                 tb = np.linspace(0, len(data) / sample_rate, len(data))
             else:
                 data += d["data"]
-            
+
         if len(missing_reps) > 0:
             CP.cprint("r", f"Missing {len(missing_reps)} reps for {name} {i}", "red")
         data = data / (nreps - len(missing_reps))
@@ -298,19 +298,19 @@ class AnalyzeABR:
                 data += d["data"]
             if ndata == 0:
 
-                tb = np.arange(0, len(data) / d['record_frequency'], 1.0 / d['record_frequency'])
+                tb = np.arange(0, len(data) / d["record_frequency"], 1.0 / d["record_frequency"])
             ndata += 1
         if len(missing_reps) > 0:
             CP.cprint("r", f"Missing {len(missing_reps)} reps for {fn!s}", "red")
         data = data / (nreps - len(missing_reps))
         if high_pass_filter is not None:
-            print("average across traces hpf: ", high_pass_filter, d['record_frequency'])
+            print("average across traces hpf: ", high_pass_filter, d["record_frequency"])
             data = self.FILT.SignalFilter_HPFButter(
-                data, HPF=high_pass_filter, samplefreq=d['record_frequency'], NPole=4, bidir=True
+                data, HPF=high_pass_filter, samplefreq=d["record_frequency"], NPole=4, bidir=True
             )
         # tile the traces.
         # first linspace to 100 kHz
-        trdur = len(data) / d['record_frequency']
+        trdur = len(data) / d["record_frequency"]
         newrate = 1e5
         tb = np.linspace(0, trdur, len(data))
         # f, ax = mpl.subplots(2,1)
@@ -444,7 +444,7 @@ class AnalyzeABR:
         #     raise ValueError(
         #         f"Stimulus type {stim_type} not recognized togethger with data type {metadata['type']}"
         #     )
-        return title, page_file_name # , stack_dir
+        return title, page_file_name  # , stack_dir
 
     def plot_abrs(
         self,
@@ -509,13 +509,13 @@ class AnalyzeABR:
             _description_
         """
         # print("metadata: ", metadata)
-        sninfo = Path(metadata['filename']).parent.parent.name
+        sninfo = Path(metadata["filename"]).parent.parent.name
         subid = re_subject.search(sninfo)
 
         amplifier_gain = metadata["amplifier_gain"]
         if subid is not None:
             subj = subid.group("subject")
-            if subj in  ["N004", "N006", "N005", "N007"]:
+            if subj in ["N004", "N006", "N005", "N007"]:
                 amplifier_gain = 1
 
         if scale == "uV":
@@ -560,9 +560,7 @@ class AnalyzeABR:
 
             # check the data type to build the datasets
 
-            title, page_file_name = self.parse_metadata(
-                metadata, stim_type, acquisition
-            )
+            title, page_file_name = self.parse_metadata(metadata, stim_type, acquisition)
             if ax_plot is None:
                 P.figure_handle.suptitle(title, fontsize=8)
                 ax = P.axarr
@@ -601,7 +599,7 @@ class AnalyzeABR:
                     if ax_plot is not None:  # single axis
                         ax = ax_plot
                         delta_y = stack_increment * i
-                    else:   # multiple axes
+                    else:  # multiple axes
                         ax = P.axarr[len(dblist) - i - 1, j]
                         delta_y = 0
                     if not i % 2:
@@ -616,14 +614,21 @@ class AnalyzeABR:
                         npts = n_disp_pts
                     # print("added_gain: ", added_gain)
                     if abr_data.ndim > 3:
-                        abr_data = abr_data.squeeze(axis = 0)
+                        abr_data = abr_data.squeeze(axis=0)
                     if stim_type == "Click":
                         plot_data = added_gain * abr_data[0, i, :] / amplifier_gain
                     else:
                         plot_data = added_gain * abr_data[i, j, :] / amplifier_gain
                     print("thresholds in plot_abrs: ", thresholds)
-                    if thresholds is not None and isinstance(thresholds, list) and len(thresholds) < j and np.abs(db-thresholds[j]) < 1:
-                        CP.cprint("c", f"** Found threshold, db: {db!s}, threshold: {thresholds[j]!s}")
+                    if (
+                        thresholds is not None
+                        and isinstance(thresholds, list)
+                        and len(thresholds) < j
+                        and np.abs(db - thresholds[j]) < 1
+                    ):
+                        CP.cprint(
+                            "c", f"** Found threshold, db: {db!s}, threshold: {thresholds[j]!s}"
+                        )
                         ax.plot(
                             tb[:npts] * 1e3,
                             np.zeros_like(plot_data[:npts]) + delta_y,
@@ -651,9 +656,22 @@ class AnalyzeABR:
                         # ax.plot(waveana.p1_latencies[i]*1e3, waveana.p1_amplitudes[i]+delta_y, 'ro', clip_on=False)
                         # ax.plot(waveana.n1_latencies[i]*1e3, waveana.n1_amplitudes[i]+delta_y, 'bo', clip_on=False)
                         marker_at = 1.0
-                        ax.plot([marker_at, marker_at], [delta_y-1, delta_y+1], 'k-', clip_on=False, linewidth=0.5)
+                        ax.plot(
+                            [marker_at, marker_at],
+                            [delta_y - 1, delta_y + 1],
+                            "k-",
+                            clip_on=False,
+                            linewidth=0.5,
+                        )
                         if i == len(dblist) - 1:
-                            ax.text(marker_at, delta_y+1.5, f"{marker_at:.1f} ms", fontsize=8, ha="center", va="bottom")
+                            ax.text(
+                                marker_at,
+                                delta_y + 1.5,
+                                f"{marker_at:.1f} ms",
+                                fontsize=8,
+                                ha="center",
+                                va="bottom",
+                            )
                     else:
                         ax.plot(
                             (tb[:npts]) * 1e3,
@@ -906,7 +924,6 @@ class AnalyzeABR:
         amplifier_gain=1e4,
         scale: str = "V",
         high_pass_filter: Union[float, None] = None,
-
         maxdur: Union[float, None] = None,
         pdf: Union[object, None] = None,
     ):
@@ -971,10 +988,9 @@ class AnalyzeABR:
                     abr_data[i, j] = x
                     n += 1
             print("raaabrf:: sample rate: ", sample_rate, "max time: ", np.max(tb))
-            
 
         print("read and average py3abr: stim type:: ", stim_type)
-        if stim_type in ["interleaved"]:  # a form of Tones... 
+        if stim_type in ["interleaved"]:  # a form of Tones...
             n = 0
             abr_data, tb, sample_rate, stim = self.average_across_traces(
                 fd, n, protocol, date, high_pass_filter=high_pass_filter
@@ -988,7 +1004,7 @@ class AnalyzeABR:
         if dblist[0] > dblist[-1]:  # need to reverse data order and dblist order
             dblist = dblist[::-1]
             abr_data = np.flip(abr_data, axis=0)
-        print("sample_rate: " , sample_rate, 1./np.mean(np.diff(tb)))
+        print("sample_rate: ", sample_rate, 1.0 / np.mean(np.diff(tb)))
         amp_gain = 1e4
 
         metadata = {
@@ -1011,7 +1027,7 @@ class AnalyzeABR:
             self.plot_abrs(
                 abr_data=abr_data,
                 tb=tb,
-                waveana = waveana,
+                waveana=waveana,
                 stim_type=stim_type,
                 scale=scale,
                 dblist=dblist,
@@ -1022,7 +1038,7 @@ class AnalyzeABR:
                 use_matplotlib=True,
                 pdf=pdf,
             )
-        print("max time base rad and average: " , np.max(tb))
+        print("max time base rad and average: ", np.max(tb))
         return abr_data, tb, metadata
 
 
@@ -1035,7 +1051,7 @@ def plot_click_stack(
     HPF = AR.experiment["ABR_settings"]["HPF"]
     LPF = AR.experiment["ABR_settings"]["LPF"]
     stack_increment = AR.experiment["ABR_settings"]["stack_increment"]
-    
+
     pdf = None
     if ax is None and pdf is None:
         raise ValueError("Must provide either an axis or a pdf file")
@@ -1191,7 +1207,9 @@ def get_categories(subjects, categorize="treatment"):
     return categories
 
 
-def get_analyzed_click_data(filename, AR, ABR4, subj, HPF, maxdur, scale:float=1.0, invert:bool=False):
+def get_analyzed_click_data(
+    filename, AR, ABR4, subj, HPF, maxdur, scale: float = 1.0, invert: bool = False
+):
     pfiles = list(Path(filename).glob("*_click_*.p"))
     # f, ax = mpl.subplots(1, 1)  # for a quick view of the data
     if len(pfiles) > 0:
@@ -1209,14 +1227,14 @@ def get_analyzed_click_data(filename, AR, ABR4, subj, HPF, maxdur, scale:float=1
         print("gacd: Max time: ", np.max(tb), "sample rate: ", metadata["record_frequency"])
 
     else:
-        # sample frequency for ABR4 depends on when the data was collected. 
+        # sample frequency for ABR4 depends on when the data was collected.
         # so we set it this way:
         subj_id = re_subject.match(subj["name"]).group("subject")
         # print(subj_id)
-        if subj_id[0] == "R": # Ruili data, 100 kHz
-            sample_frequency = 100000.
+        if subj_id[0] == "R":  # Ruili data, 100 kHz
+            sample_frequency = 100000.0
         elif subj_id[0] == "N":  # Reggie data, 50 kHz
-            sample_frequency = 50000.
+            sample_frequency = 50000.0
         else:
             print("Sample frequency cannot be determined with the information provided")
             raise ValueError(f"Subject ID {subj_id} not recognized")
@@ -1242,14 +1260,17 @@ def get_analyzed_click_data(filename, AR, ABR4, subj, HPF, maxdur, scale:float=1
     if waves is None:  # no data for this stimulus type
         return None
     # print(np.max(waves))
- 
+
     WaveAnalyzer.analyze(timebase=tb, waves=waves[:, 0, :])
     dbs = metadata["stimuli"]["dblist"]
     # ABR4.dblist
     print("  get analyzed click data: dbs: ", dbs)
     return WaveAnalyzer, dbs, metadata
 
-def get_analyzed_tone_data(filename, AR, ABR4, subj, HPF:float=100., maxdur:float=10., scale:float=1.0):
+
+def get_analyzed_tone_data(
+    filename, AR, ABR4, subj, HPF: float = 100.0, maxdur: float = 10.0, scale: float = 1.0
+):
     pfiles = list(Path(filename).glob("*_interleaved_plateau_*.p"))
     print("pfiles: ", len(pfiles))
     if len(pfiles) > 0:
@@ -1258,12 +1279,12 @@ def get_analyzed_tone_data(filename, AR, ABR4, subj, HPF:float=100., maxdur:floa
         )
         sym = "D"
     else:
-        # sample frequency depends on whenth e data was collected. 
+        # sample frequency depends on whenth e data was collected.
         # so we set it this way:
         subj_id = re_subject.match(subj["name"]).group("subject")
 
         waves, tb, metadata = ABR4.read_dataset(
-            subject=subj['name'],
+            subject=subj["name"],
             datapath=subj["filename"],
             subdir=filename.name,
             datatype="Tone",
@@ -1280,13 +1301,13 @@ def get_analyzed_tone_data(filename, AR, ABR4, subj, HPF:float=100., maxdur:floa
     subject_threshold = []
     subject_frequencies = []
     # print(metadata['stimuli'])
-    if "frlist" in metadata['stimuli']:
-        freq_list = metadata['stimuli']['frlist']
-    elif "freqlist" in metadata['stimuli']:
-        freq_list = metadata['stimuli']['freqlist']
+    if "frlist" in metadata["stimuli"]:
+        freq_list = metadata["stimuli"]["frlist"]
+    elif "freqlist" in metadata["stimuli"]:
+        freq_list = metadata["stimuli"]["freqlist"]
     else:
-        raise ValueError("No frequency list in metadata", metadata['stimuli'])    
-    
+        raise ValueError("No frequency list in metadata", metadata["stimuli"])
+
     c = mpl.colormaps["rainbow"](np.linspace(0, 1, waves.shape[1]))
 
     for ifr in range(waves.shape[1]):
@@ -1294,26 +1315,35 @@ def get_analyzed_tone_data(filename, AR, ABR4, subj, HPF:float=100., maxdur:floa
         # WaveAnalyzer.ppio[np.isnan(WaveAnalyzer.ppio)] = 0
         # print("waves analyzed: ", WaveAnalyzer.ppio)
         # print("baseline: ", WaveAnalyzer.rms_baseline)
-        valid_dbs = range(waves.shape[0])   # use this for ppio: #np.where(np.isfinite(WaveAnalyzer.ppio))[0]
-        dbx = np.array(metadata['stimuli']['dblist'])[valid_dbs]
-        spec_power = WaveAnalyzer.specpower(fr=[750, 1300], win=[1e-3, 8e-3], spls=metadata['stimuli']['dblist'])
-        spec_noise = WaveAnalyzer.specpower(fr=[750, 1300], win=[1e-3, 8e-3], spls=metadata['stimuli']['dblist'],
-            get_reference=True, i_reference=np.argmin(metadata['stimuli']['dblist']))  # use the lowest stimulus level to get the reference spectral baseline
+        valid_dbs = range(
+            waves.shape[0]
+        )  # use this for ppio: #np.where(np.isfinite(WaveAnalyzer.ppio))[0]
+        dbx = np.array(metadata["stimuli"]["dblist"])[valid_dbs]
+        spec_power = WaveAnalyzer.specpower(
+            fr=[750, 1300], win=[1e-3, 8e-3], spls=metadata["stimuli"]["dblist"]
+        )
+        spec_noise = WaveAnalyzer.specpower(
+            fr=[750, 1300],
+            win=[1e-3, 8e-3],
+            spls=metadata["stimuli"]["dblist"],
+            get_reference=True,
+            i_reference=np.argmin(metadata["stimuli"]["dblist"]),
+        )  # use the lowest stimulus level to get the reference spectral baseline
         # print("valid)", valid)
         # ax.plot(metadata['stimuli']['dblist'], WaveAnalyzer.ppio, color=c[ifr], marker='o', linewidth=0, markersize=3, label=f"{freq_list[ifr]:.1f} Hz")
         # print("Waveana rms baseline: ", WaveAnalyzer.rms_baseline)
         threshold_value, threshold_index, fit = fit_thresholds.fit_thresholds(
-                dbx,
-                WaveAnalyzer.ppio[valid_dbs],
-                # WaveAnalyzer.psdwindow[valid_dbs],
-                # WaveAnalyzer.psdwindow[0],
-                # WaveAnalyzer.reference_psd,
-                WaveAnalyzer.rms_baseline,
-                threshold_factor=AR.experiment["ABR_settings"]["tone_threshold_factor"],
-            )
+            dbx,
+            WaveAnalyzer.ppio[valid_dbs],
+            # WaveAnalyzer.psdwindow[valid_dbs],
+            # WaveAnalyzer.psdwindow[0],
+            # WaveAnalyzer.reference_psd,
+            WaveAnalyzer.rms_baseline,
+            threshold_factor=AR.experiment["ABR_settings"]["tone_threshold_factor"],
+        )
         frequency = float(freq_list[ifr])
         # mpl.plot(fit[0], fit[1], '-', color=c[ifr])
-        threshold_value = round(threshold_value/2)*2  # round to nearest 2 dB
+        threshold_value = round(threshold_value / 2) * 2  # round to nearest 2 dB
         subject_threshold.append(float(threshold_value))
         subject_frequencies.append(float(frequency))
     print("thresholds: ", subject_threshold, subject_frequencies)
@@ -1323,6 +1353,7 @@ def get_analyzed_tone_data(filename, AR, ABR4, subj, HPF:float=100., maxdur:floa
     # ABR4.dblist
     print("  got analyzed tone data: dbs: ", dbs)
     return WaveAnalyzer, dbs, metadata, subject_threshold, subject_frequencies
+
 
 def clean_subject_list(subjs):
     """clean_subject_list Remove cruft from the subject directory list.
@@ -1431,7 +1462,7 @@ def plot_click_stacks(
             stim_type="Click",
             dblist=dbs,
             frlist=None,
-            thresholds = thresholds,
+            thresholds=thresholds,
             maxdur=AR.experiment["ABR_settings"]["maxdur"],
             ax_plot=axlist[fnindex],
         )
@@ -1455,20 +1486,21 @@ def remap_xlabels(ax):
     ax.set_xticks(range(len(labels)))  # need to do this to make sure ticks and labels are in sync
     ax.set_xticklabels(labels)
 
+
 def set_gain_and_scale(subj, AR):
     # Set minimum latency and gain values from the configuratoin file
     if "ABR_parameters" not in AR.experiment.keys():
         raise ValueError("'ABR_parameters' missing from configuration file")
-    
+
     scd = AR.experiment["ABR_parameters"]  # get the parameters dictionary
-    if 'default' not in scd.keys():
+    if "default" not in scd.keys():
         raise ValueError("'default' values missing from ABR_parameters")
-    
+
     # print("Parameters: ", scd)
     # set the defaults.
-    scale = scd['default']['scale']
-    invert = scd['default']['invert']
-    min_lat = scd['default']["minimum_latency"]
+    scale = scd["default"]["scale"]
+    invert = scd["default"]["invert"]
+    min_lat = scd["default"]["minimum_latency"]
     # print("ABR keys: ", list(AR.experiment["ABR_parameters"].keys()))
 
     # if the full name is in the parameter list, use it instead of any defaults
@@ -1480,26 +1512,32 @@ def set_gain_and_scale(subj, AR):
         fit_index = scd[subj["name"]]["fit_index"]
 
     else:
-        CP.cprint("r", f"\nsubject name: {subj['name']!s} is NOT experiment ABR_parameters list - checking abbreviated versions")
+        CP.cprint(
+            "r",
+            f"\nsubject name: {subj['name']!s} is NOT experiment ABR_parameters list - checking abbreviated versions",
+        )
         smatch = re_subject.match(subj["name"])
         CP.cprint("m", f"SMATCH: {smatch}, {subj['name']:s}")
         if smatch["subject"] is not None:
             sname = smatch["subject"]
             if sname.startswith("N0"):
-                scale = scd['N0']['scale']
-                invert = scd['N0']['invert']
-                min_lat = scd['N0']["minimum_latency"]
-                fit_index = scd['N0']["fit_index"]
+                scale = scd["N0"]["scale"]
+                invert = scd["N0"]["invert"]
+                min_lat = scd["N0"]["minimum_latency"]
+                fit_index = scd["N0"]["fit_index"]
             elif sname.startswith("T0"):
-                scale = scd['T0']['scale']
-                invert = scd['T0']['invert']
-                min_lat = scd['T0']["minimum_latency"]
-                fit_index = scd['T0']["fit_index"]
+                scale = scd["T0"]["scale"]
+                invert = scd["T0"]["invert"]
+                min_lat = scd["T0"]["minimum_latency"]
+                fit_index = scd["T0"]["fit_index"]
             else:
                 raise ValueError(f"Subject name {sname:s} not recognized as a category for scaling")
         else:
-            raise ValueError(f"Subject name {subj['name']:s} not in configuration ABR_parameters dictionary")
+            raise ValueError(
+                f"Subject name {subj['name']:s} not in configuration ABR_parameters dictionary"
+            )
     return scale, invert, min_lat, fit_index
+
 
 def do_one_subject(
     subj: dict,
@@ -1510,7 +1548,7 @@ def do_one_subject(
     V2uV: float,
     example_subjects: list = None,
     example_axes: list = None,
-    test_plots: bool=False
+    test_plots: bool = False,
 ):
     """do_one_subject : Compute the mean ppio, threshold and IO curve for one subject.
 
@@ -1562,13 +1600,18 @@ def do_one_subject(
             # print("Exclusion files: ", AR.experiment["ABR_subject_excludes"].keys())
             CP.cprint("r", f"Excluding subject file: {subj['name']: s}")
             continue
-        
+
         scale, invert, min_lat, fit_index = set_gain_and_scale(subj, AR)
 
         fname = filename.name.lower()
         # determine the stimulus type.
         stim_type = None
-        print("subject data type: ", subj["filename"].name, " but requested type: ", requested_stimulus_type)
+        print(
+            "subject data type: ",
+            subj["filename"].name,
+            " but requested type: ",
+            requested_stimulus_type,
+        )
         if subj["filename"].name != requested_stimulus_type:
             return subject_threshold, None, None, None, None, None
         match requested_stimulus_type:
@@ -1580,10 +1623,8 @@ def do_one_subject(
                 ):
                     stim_type = "Click"
             case "Tone":
-                if (
-                    (subj["filename"].name == "Tone") 
-                    or 
-                    (subj["filename"].name == "Interleaved_plateau")
+                if (subj["filename"].name == "Tone") or (
+                    subj["filename"].name == "Interleaved_plateau"
                 ):
                     stim_type = "Tone"
             case "Interleaved_plateau":
@@ -1613,10 +1654,10 @@ def do_one_subject(
             CP.cprint("g", f"    ***** do one subj: dbs: {dbs!s}")
             waveana.get_triphasic(min_lat=min_lat, dev=3)
 
-            waveana.rms_baseline = waveana.rms_baseline # * 1./metadata["amplifier_gain"]
+            waveana.rms_baseline = waveana.rms_baseline  # * 1./metadata["amplifier_gain"]
             # adjust the measures to follow a line of latency when the response gets small.
-            waveana.adjust_triphasic(dbs, threshold_index=fit_index, window=0.0005)  
-            waveana.ppio = waveana.ppio * 1./metadata["amplifier_gain"]
+            waveana.adjust_triphasic(dbs, threshold_index=fit_index, window=0.0005)
+            waveana.ppio = waveana.ppio * 1.0 / metadata["amplifier_gain"]
 
             metadata["stimuli"]["dblist"] = dbs
 
@@ -1648,7 +1689,7 @@ def do_one_subject(
                 )
             else:
                 ref_db = None
-            
+
             # thr_value, threshold_index, rms = waveana.thresholds(
             #     timebase=waveana.timebase,
             #     waves=waveana.waves,
@@ -1667,21 +1708,20 @@ def do_one_subject(
             threshold_value, threshold_index, fit = fit_thresholds.fit_thresholds(
                 x=np.array(dbs)[imax_amp],
                 y=np.array(waveana.p1n1_amplitudes)[imax_amp],
-                baseline = waveana.rms_baseline,
-                threshold_factor=AR.experiment["ABR_settings"]["click_threshold_factor"]
+                baseline=waveana.rms_baseline,
+                threshold_factor=AR.experiment["ABR_settings"]["click_threshold_factor"],
             )
-            
+
             db_steps = np.abs(np.mean(np.diff(dbs)))
-            threshold_value_adj = round(threshold_value/2.5)*2.5  # round to nearest 2.5 dB
+            threshold_value_adj = round(threshold_value / 2.5) * 2.5  # round to nearest 2.5 dB
             threshold_value_unadj = dbs[(np.abs(dbs - threshold_value)).argmin()]
             subject_threshold.append(threshold_value_adj)
             subject_threshold_unadjusted.append(threshold_value_unadj)
             CP.cprint("m", f"    *****  do one subject: threshold: {threshold_value:.2f} dB")
             subject_ppio.append(float(np.max(waveana.ppio) * V2uV))
-            
 
             if test_plots:
-                f, ax = mpl.subplots(1,2, figsize = [8, 5])
+                f, ax = mpl.subplots(1, 2, figsize=[8, 5])
                 # print(filename, subj["filename"].name)
                 plot_click_stacks(
                     AR,
@@ -1695,20 +1735,32 @@ def do_one_subject(
                 )
 
                 stacki = AR.experiment["ABR_settings"]["stack_increment"]
-                dy = stacki*np.array(range(len(dbs)))
-                ax[0].plot(waveana.fitline_p1_lat*1e3, dy+waveana.p1_amplitudes*1e6, '-o', color='r', linewidth=0.3)
-                ax[0].plot(waveana.fitline_n1_lat*1e3, dy+waveana.n1_amplitudes*1e6, '-o', color='b', linewidth=0.3)
-                
-                ax[1].plot(dbs, waveana.p1n1_amplitudes, 'o-', color='k')
-                ax[1].plot(fit[0], fit[1], '-', color='r')
+                dy = stacki * np.array(range(len(dbs)))
+                ax[0].plot(
+                    waveana.fitline_p1_lat * 1e3,
+                    dy + waveana.p1_amplitudes * 1e6,
+                    "-o",
+                    color="r",
+                    linewidth=0.3,
+                )
+                ax[0].plot(
+                    waveana.fitline_n1_lat * 1e3,
+                    dy + waveana.n1_amplitudes * 1e6,
+                    "-o",
+                    color="b",
+                    linewidth=0.3,
+                )
+
+                ax[1].plot(dbs, waveana.p1n1_amplitudes, "o-", color="k")
+                ax[1].plot(fit[0], fit[1], "-", color="r")
 
                 ax[0].set_title(f"{subj['filename'].name:s}")
                 mpl.show()
-        
+
         elif requested_stimulus_type in ["Tone", "Interleaved_plateau"]:
             filename = Path(filename).parent
             CP.cprint("g", f"    ***** do one sub: Tones, filename: {filename!s}")
-            
+
             waveana, dbs, metadata, thresholds, frequencies = get_analyzed_tone_data(
                 filename,
                 AR,
@@ -1722,10 +1774,10 @@ def do_one_subject(
             subject_threshold = [thresholds, frequencies]
             waveana.get_triphasic(min_lat=min_lat, dev=3)
 
-            waveana.rms_baseline = waveana.rms_baseline # * 1./metadata["amplifier_gain"]
+            waveana.rms_baseline = waveana.rms_baseline  # * 1./metadata["amplifier_gain"]
             # adjust the measures to follow a line of latency when the response gets small.
-            waveana.adjust_triphasic(dbs, threshold_index=fit_index, window=0.0005)  
-            waveana.ppio = waveana.ppio * 1./metadata["amplifier_gain"]
+            waveana.adjust_triphasic(dbs, threshold_index=fit_index, window=0.0005)
+            waveana.ppio = waveana.ppio * 1.0 / metadata["amplifier_gain"]
             if not np.isnan(waveana.p1n1_amplitudes).all():
                 imax_index = np.nanargmax(waveana.p1n1_amplitudes)
                 imax_amp = list(range(imax_index))
@@ -1735,17 +1787,21 @@ def do_one_subject(
                 threshold_value, threshold_index, fit = fit_thresholds.fit_thresholds(
                     x=np.array(dbs)[imax_amp],
                     y=np.array(waveana.p1n1_amplitudes)[imax_amp],
-                    baseline = waveana.rms_baseline,
-                    threshold_factor=AR.experiment["ABR_settings"]["click_threshold_factor"]
+                    baseline=waveana.rms_baseline,
+                    threshold_factor=AR.experiment["ABR_settings"]["click_threshold_factor"],
                 )
-                
+
                 if threshold_value is not None:
                     db_steps = np.abs(np.mean(np.diff(dbs)))
-                    threshold_value_adj = round(threshold_value/2.5)*2.5  # round to nearest 2.5 dB
+                    threshold_value_adj = (
+                        round(threshold_value / 2.5) * 2.5
+                    )  # round to nearest 2.5 dB
                     threshold_value_unadj = dbs[(np.abs(dbs - threshold_value)).argmin()]
                     subject_threshold.append(threshold_value_adj)
                     subject_threshold_unadjusted.append(threshold_value_unadj)
-                    CP.cprint("m", f"    *****  do one subject: threshold: {threshold_value:.2f} dB")
+                    CP.cprint(
+                        "m", f"    *****  do one subject: threshold: {threshold_value:.2f} dB"
+                    )
                 else:
                     CP.cprint("r", f"    *****  do one subject: {subj['name']:s} has no threshold")
                     subject_threshold.append(np.nan)
@@ -1757,7 +1813,7 @@ def do_one_subject(
             subject_ppio.append(float(np.max(waveana.ppio) * V2uV))
 
             if test_plots:
-                f, ax = mpl.subplots(1,2, figsize = [8, 5])
+                f, ax = mpl.subplots(1, 2, figsize=[8, 5])
                 # print(filename, subj["filename"].name)
                 plot_click_stacks(
                     AR,
@@ -1771,16 +1827,28 @@ def do_one_subject(
                 )
 
                 stacki = AR.experiment["ABR_settings"]["stack_increment"]
-                dy = stacki*np.array(range(len(dbs)))
-                ax[0].plot(waveana.fitline_p1_lat*1e3, dy+waveana.p1_amplitudes*1e6, '-o', color='r', linewidth=0.3)
-                ax[0].plot(waveana.fitline_n1_lat*1e3, dy+waveana.n1_amplitudes*1e6, '-o', color='b', linewidth=0.3)
-                
-                ax[1].plot(dbs, waveana.p1n1_amplitudes, 'o-', color='k')
-                ax[1].plot(fit[0], fit[1], '-', color='r')
+                dy = stacki * np.array(range(len(dbs)))
+                ax[0].plot(
+                    waveana.fitline_p1_lat * 1e3,
+                    dy + waveana.p1_amplitudes * 1e6,
+                    "-o",
+                    color="r",
+                    linewidth=0.3,
+                )
+                ax[0].plot(
+                    waveana.fitline_n1_lat * 1e3,
+                    dy + waveana.n1_amplitudes * 1e6,
+                    "-o",
+                    color="b",
+                    linewidth=0.3,
+                )
+
+                ax[1].plot(dbs, waveana.p1n1_amplitudes, "o-", color="k")
+                ax[1].plot(fit[0], fit[1], "-", color="r")
 
                 ax[0].set_title(f"{subj['filename'].name:s}")
                 mpl.show()
-        
+
         else:
             print("stimulus type not recognized", requested_stimulus_type)
             exit()
@@ -1795,6 +1863,7 @@ def do_one_subject(
         f"\n   *****  do one subject ({fns[0]!s}): # of thresholds measured:  {len(subject_threshold):d}, thrs: {subject_threshold!s}\n",
     )
     return subject_threshold, subject_ppio, dbs, threshold_index, waveana, stim_type
+
 
 def stuffs(filename, sub, directory_name, HPF, maxdur):
     fname = filename.name
@@ -1843,7 +1912,7 @@ def compute_tone_thresholds(
     example_subjects: list = None,
     categories_done: list = None,
     symdata: dict = None,
-    test_plots: bool=False,
+    test_plots: bool = False,
 ):
     overridecolor = False
     if categorize in ["treatment"]:
@@ -1862,7 +1931,6 @@ def compute_tone_thresholds(
 
     plot_colors = AR.experiment["plot_colors"]
 
-
     V2uV = 1e6  # factor to multiply data to get microvolts.
     treat = "NT"  # for no treatment
     baseline_dbs = []
@@ -1875,7 +1943,7 @@ def compute_tone_thresholds(
         if subj["name"] in AR.experiment["ABR_subject_excludes"]:
             continue
 
-                # if subj["name"] not in ["CBA_F_N023_p175_NT", "CBA_F_N024_p175_NT", "CBA_F_N000_p18_NT", "CBA_F_N002_p27_NT", "CBA_F_N015_p573_NT"]:
+            # if subj["name"] not in ["CBA_F_N023_p175_NT", "CBA_F_N024_p175_NT", "CBA_F_N000_p18_NT", "CBA_F_N002_p27_NT", "CBA_F_N015_p573_NT"]:
         #     continue
         # if isubj > 5:
         #     continue
@@ -1905,7 +1973,7 @@ def compute_tone_thresholds(
             V2uV=V2uV,
             example_subjects=example_subjects,
             example_axes=example_axes,
-            test_plots= test_plots,
+            test_plots=test_plots,
         )
         if treat not in all_thr_freq.keys():
             all_thr_freq[treat] = [subject_threshold]
@@ -1914,7 +1982,7 @@ def compute_tone_thresholds(
 
     # each treatment group in the dict consists of a list (subjects) of lists ([thresholds], [frequencies])
     # first we get all the frequencies in the list of lists
-    omit_freqs = [3000., 24000., 240000.]
+    omit_freqs = [3000.0, 24000.0, 240000.0]
     allfr = []
 
     for treat in all_thr_freq.keys():
@@ -1935,7 +2003,13 @@ def compute_tone_thresholds(
             if len(subn) == 0:
                 thrmap[treat].append([np.nan for f in allfr if f not in omit_freqs])
             else:
-                thrmap[treat].append([subn[0][subn[1].index(f)] if f in subn[1] else np.nan for f in allfr if f not in omit_freqs])
+                thrmap[treat].append(
+                    [
+                        subn[0][subn[1].index(f)] if f in subn[1] else np.nan
+                        for f in allfr
+                        if f not in omit_freqs
+                    ]
+                )
     all_tone_map_data = {"frequencies": allfr, "thresholds": thrmap, "plot_colors": plot_colors}
     with open("all_tone_map_data.pkl", "wb") as f:
         pickle.dump(all_tone_map_data, f)
@@ -1944,10 +2018,12 @@ def compute_tone_thresholds(
 
     return categories_done, all_tone_map_data
 
+
 def legend_without_duplicate_labels(ax):
     handles, labels = ax.get_legend_handles_labels()
     unique = [(h, l) for i, (h, l) in enumerate(zip(handles, labels)) if l not in labels[:i]]
     ax.legend(*zip(*unique))
+
 
 def plot_tone_map_data(thr_mapax, all_tone_map_data):
     thrmap = all_tone_map_data["thresholds"]
@@ -1955,11 +2031,11 @@ def plot_tone_map_data(thr_mapax, all_tone_map_data):
     plot_colors = all_tone_map_data["plot_colors"]
     print("thrmap: ", thrmap)
     print("allfr: ", allfr)
-    f, thr_mapax = mpl.subplots(1,1)
+    f, thr_mapax = mpl.subplots(1, 1)
     t_done = []
     fr_offset = 0.02
     # define frequencies that where ABRs were not consistently measured
-    freq_to_remove = [1000., 2000., 3000., 6000., 12000., 40000.]
+    freq_to_remove = [1000.0, 2000.0, 3000.0, 6000.0, 12000.0, 40000.0]
     # for each condition (treatment, age, etc)
     for itr, treat in enumerate(thrmap.keys()):
         print("treat: ", treat)
@@ -1972,50 +2048,70 @@ def plot_tone_map_data(thr_mapax, all_tone_map_data):
             t_done.append(treat)
 
         dtr = np.array(thrmap[treat])
-        frs = np.array(fr_offset*(itr-len(thrmap.keys())/2) + np.log10(allfr))
+        frs = np.array(fr_offset * (itr - len(thrmap.keys()) / 2) + np.log10(allfr))
         # stack the arrays together. col 0 is raw freq, col2 is log freq, the rest are the subject threshols
         # measured at this frequency
         data = np.vstack((allfr, frs))
         for dx in dtr:
             data = np.vstack((data, dx))
         data = data.T
-        nmeas = data.shape[0]-2
+        nmeas = data.shape[0] - 2
         rem_fr = []
         for ifr, fr in enumerate(allfr):
             if fr in freq_to_remove:
                 rem_fr.append(ifr)
         datao = data.copy()
         data = np.delete(data, rem_fr, axis=0)
-        data = np.where(data == 0., np.nan, data)
-        data = np.where(data > 90., np.nan, data)
-        topmarker = np.where(datao >=90., datao, np.nan)
+        data = np.where(data == 0.0, np.nan, data)
+        data = np.where(data > 90.0, np.nan, data)
+        topmarker = np.where(datao >= 90.0, datao, np.nan)
         print(topmarker)
-        print(len(np.where(topmarker[:, 2:] == 100.)[0]))
+        print(len(np.where(topmarker[:, 2:] == 100.0)[0]))
         # for d in data:
-        thr_mapax.errorbar(data[:,1], np.nanmean(data[:, 2:], axis=1), yerr=scipy.stats.sem(data[:, 2:], axis=1, nan_policy='omit'), 
-                        marker='o', markersize=4, color=plot_colors[treat], capsize=4, linestyle="-", linewidth=1.5)
-        thr_mapax.plot(data[:,1], data[:, 2:], color=plot_colors[treat], marker="o", linewidth=0., markersize=2.5, label = t_label)
-        thr_mapax.plot(datao[:,1], topmarker[:, 2:]+np.random.uniform(-2, 2, size=topmarker[:, 2:].shape),
-                                                                       color=plot_colors[treat], marker="^", linewidth=0., markersize=3.5)
-    
-    thr_mapax.plot([np.log10(3000.), np.log10(64000)], [90, 90], linewidth=0.35, color="grey")
+        thr_mapax.errorbar(
+            data[:, 1],
+            np.nanmean(data[:, 2:], axis=1),
+            yerr=scipy.stats.sem(data[:, 2:], axis=1, nan_policy="omit"),
+            marker="o",
+            markersize=4,
+            color=plot_colors[treat],
+            capsize=4,
+            linestyle="-",
+            linewidth=1.5,
+        )
+        thr_mapax.plot(
+            data[:, 1],
+            data[:, 2:],
+            color=plot_colors[treat],
+            marker="o",
+            linewidth=0.0,
+            markersize=2.5,
+            label=t_label,
+        )
+        thr_mapax.plot(
+            datao[:, 1],
+            topmarker[:, 2:] + np.random.uniform(-2, 2, size=topmarker[:, 2:].shape),
+            color=plot_colors[treat],
+            marker="^",
+            linewidth=0.0,
+            markersize=3.5,
+        )
+
+    thr_mapax.plot([np.log10(3000.0), np.log10(64000)], [90, 90], linewidth=0.35, color="grey")
     thr_mapax.set_xlabel("Frequency (kHz)")
     thr_mapax.set_ylabel("Threshold (dB SPL)")
-    x_vals = [ np.log10(4000), np.log10(8000), np.log10(16000), np.log10(32000), np.log10(48000)]
-    x_labs = [ "4", "8", "16", "32", "48"]
+    x_vals = [np.log10(4000), np.log10(8000), np.log10(16000), np.log10(32000), np.log10(48000)]
+    x_labs = ["4", "8", "16", "32", "48"]
     thr_mapax.set_xticks(x_vals)
     thr_mapax.set_xticklabels(x_labs)
 
     legend_without_duplicate_labels(thr_mapax)
     leg = thr_mapax.get_legend()
-    leg.set_draggable(state= 1)
+    leg.set_draggable(state=1)
     thr_mapax.set_ylim([0, 110])
-    thr_mapax.set_xlim([np.log10(3000.), np.log10(64000)])
+    thr_mapax.set_xlim([np.log10(3000.0), np.log10(64000)])
     # thr_mapax.set_xscale("log")
     mpl.show()
-
-
-
 
 
 def do_tone_map_analysis(
@@ -2028,7 +2124,7 @@ def do_tone_map_analysis(
     requested_stimulus_type: str = "Tone",
     experiment: Union[dict, None] = None,
     example_subjects: list = None,
-    test_plots: bool = False
+    test_plots: bool = False,
 ):
 
     # base directory
@@ -2056,7 +2152,7 @@ def do_tone_map_analysis(
                 example_axes = [P.axarr[i][0] for i in range(len(example_subjects))]
                 nex = len(example_subjects)
                 thr_mapax = P.axarr[1][0]
- 
+
             categories_done, all_tone_map_data = compute_tone_thresholds(
                 AR,
                 ABR4,
@@ -2071,6 +2167,7 @@ def do_tone_map_analysis(
             )
             print("all tone map data: ", all_tone_map_data)
             plot_tone_map_data(thr_mapax, all_tone_map_data)
+
 
 def make_tone_figure(subjs, example_subjects, STYLE):
     row1_bottom = 0.1
@@ -2098,7 +2195,7 @@ def make_tone_figure(subjs, example_subjects, STYLE):
         fontweight=STYLE.get_fontweights(),
         fontsize=STYLE.get_fontsizes(),
     )
-    
+
     # PH.show_figure_grid(P, STYLE.Figure["figsize"][0], STYLE.Figure["figsize"][1])
     return P
 
@@ -2116,7 +2213,7 @@ def compute_click_io_analysis(
     example_subjects: list = None,
     categories_done: list = None,
     symdata: dict = None,
-    test_plots:bool=False,
+    test_plots: bool = False,
 ):
     overridecolor = False
     if categorize in ["treatment"]:
@@ -2145,13 +2242,13 @@ def compute_click_io_analysis(
 
     treat = "NT"  # for no treatment
     baseline_dbs = []
-
+    line_plot_colors = {k: v for k, v in plot_colors["line_plot_colors"].items()}
+    df_abr = None  # pd.DataFrame({"Subject", "treatment", "threshold", "amplitude"])
     for subj in subjs:  # get data for each subject
         if subj["name"] in AR.experiment["ABR_subject_excludes"]:
             continue
         print("subj: ", subj["name"])
         CP.cprint("m", f"\nSubject: {subj!s}")
-
 
         if categorize == "treatment":
             treat = get_treatment(subj)
@@ -2171,13 +2268,22 @@ def compute_click_io_analysis(
             V2uV=V2uV,
             example_subjects=example_subjects,
             example_axes=example_axes,
-            test_plots = test_plots,
+            test_plots=test_plots,
         )
-
+        ddict = {
+            "Subject": subj["name"],
+            "age_category": treat,
+            "sex": re_subject.match(subj["name"]).group("sex"),
+            "threshold": np.mean(subject_threshold),
+            "amplitude": float(np.max(subject_ppio)),
+        }
+        if df_abr is None:
+            df_abr = pd.DataFrame(ddict, index=[0])
+        else:
+            df_abr = pd.concat([df_abr, pd.DataFrame(ddict, index=[0])], ignore_index=True)
         if waveana is None or stim_type is None:
             continue
-            
-            
+
         CP.cprint("r", f"Subject thr: {subject_threshold!s}  stim_type: {stim_type!s}")
         # if subject_threshold is None or stim_type is None:
         #     continue
@@ -2213,11 +2319,13 @@ def compute_click_io_analysis(
             V2uV = 1e6
             if subj["name"][6] == "R":  # Ruili data set
                 V2uV = 1e6  # different scale.
-            
+            if treat not in line_plot_colors.keys():
+                continue
             if dataset_name not in categories_done:
-                color = plot_colors[treat]
+                color = line_plot_colors[treat]
                 colors.pop(0)
                 color_dict[dataset_name] = color
+
                 categories_done.append(dataset_name)
                 if overridecolor:
                     color = "k"
@@ -2233,7 +2341,7 @@ def compute_click_io_analysis(
                     add_label=True,
                 )
             else:
-                color = plot_colors[treat]  # color_dict[dataset_name]
+                color = line_plot_colors[treat]  # color_dict[dataset_name]
                 if overridecolor:
                     color = "k"
                 _plot_io_data(
@@ -2260,19 +2368,33 @@ def compute_click_io_analysis(
                     baseline[stim_type] = np.vstack((baseline[stim_type], waveana.rms_baseline))
                     baseline_dbs.extend(dbs)
             baseline_dbs = sorted(list(set(baseline_dbs)))
-
-
+    print(df_abr.head(30))
+    print("Categories done: ", categories_done)
+    df_abr.to_csv("abr_data.csv", index=False)  # saves in long form for R
+    treats_done = [v[1] for v in categories_done]
     #  Now plot the baseline and the mean for each stimulus type
 
     plot_colors = AR.experiment["plot_colors"]
+    line_plot_colors = {
+        k: p for k, p in plot_colors["line_plot_colors"].items() if k in treats_done
+    }
+
     plot_order = AR.experiment["plot_order"]["age_category"]
+    plot_order = [p for p in plot_order if p in treats_done]
+    bkc = [v for k, v in plot_colors["bar_background_colors"].items() if k in treats_done]
+    bec = [v for k, v in plot_colors["bar_edge_colors"].items() if k in treats_done]
+    symc = [v for k, v in plot_colors["symbol_colors"].items() if k in treats_done]
+    # print(bkc)
+    # print(bec)
+    # exit()
+
     if stim_type is None:
         print("stimulus type is None for ", subj)
         return categories_done
     else:
         print("stimulus type: for subj", subj["name"], stim_type)
 
-    if axio is not None:
+    if axio is not None and stim_type in baseline.keys():
         # get baseline data and plot a grey bar
         bl_mean = np.mean(baseline[stim_type], axis=0) * V2uV
         bl_std = np.std(baseline[stim_type], axis=0) * V2uV
@@ -2291,14 +2413,14 @@ def compute_click_io_analysis(
             # and just the unique ones, in order
             all_dbs = [float(d) for d in sorted(list(set(all_dbs)))]
             # build a np array for all the response measures
-            wvs = np.nan*np.ones((len(waves_by_treatment[treat]), len(all_dbs)))
+            wvs = np.nan * np.ones((len(waves_by_treatment[treat]), len(all_dbs)))
             for i in range(len(waves_by_treatment[treat])):
                 for j, db in enumerate(waves_by_treatment[treat][i][0]):
                     k = all_dbs.index(db)
                     wvs[i, k] = waves_by_treatment[treat][i][1][j]
             waves_by_treatment[treat] = wvs
             all_dbs = np.array(all_dbs)
-            
+
             # limit the plot to a common range  (this could be smarter - we could count nonnan observations
             # at each level and only plot where we have sufficient data, e.g., N = 3 or larger?
             valid_dbs = np.argwhere((all_dbs >= 20.0) & (all_dbs <= 90.0))
@@ -2309,9 +2431,16 @@ def compute_click_io_analysis(
             else:
                 d_mean = waves_by_treatment[treat] * V2uV
                 d_std = np.zeros_like(d_mean)
-            color = plot_colors[treat]
+            color = line_plot_colors[treat]
             n_mean = len(all_dbs)
-            axio.plot(all_dbs[valid_dbs], d_mean[valid_dbs], color=color, linestyle="-", linewidth=1.5, alpha=0.75)
+            axio.plot(
+                all_dbs[valid_dbs],
+                d_mean[valid_dbs],
+                color=color,
+                linestyle="-",
+                linewidth=1.5,
+                alpha=0.75,
+            )
             if np.max(d_std) > 0:
                 axio.fill_between(
                     all_dbs[valid_dbs],
@@ -2329,18 +2458,33 @@ def compute_click_io_analysis(
     if axthr is not None:
         df = pd.DataFrame.from_dict(thresholds_by_treatment, orient="index")
         df = df.transpose()
-        sns.barplot(
+
+        bplot = sns.barplot(
             df,
             ax=axthr,
-            palette=plot_colors,
+            width=0.65,
+            palette=bkc,
             order=plot_order,
             alpha=0.7,
-            linewidth=0.75,
-            edgecolor="grey",
-            capsize=0.05,
+            linewidth=1,
+            capsize=0.18,
+            edgecolor="k",
+            errorbar=("sd"),
+            err_kws={"linewidth": 0.75, 'color': 'k'},
         )
+        # need to set edge color separately
+        for i, patch in enumerate(bplot.patches):
+            clr = patch.get_facecolor()
+            patch.set_edgecolor("w")
+            patch.set_linewidth(.0)
+
         sns.swarmplot(
-            data=df, ax=axthr, palette=plot_colors, order=plot_order, size=3.0, linewidth=0.5
+            data=df,
+            ax=axthr,
+            palette=plot_colors["bar_background_colors"],
+            order=plot_order,
+            size=3.0,
+            linewidth=0.5,
         )
         axthr.set_ylabel("Threshold (dB SPL)")
         axthr.set_xlabel("Age Category")
@@ -2354,21 +2498,27 @@ def compute_click_io_analysis(
     if axppio is not None:
         df = pd.DataFrame.from_dict(amplitudes_by_treatment, orient="index")
         df = df.transpose()
-        # print("Amplitudes: ", df)
 
-        sns.barplot(
+        bplot = sns.barplot(
             df,
             ax=axppio,
-            palette=plot_colors,
+            width=0.65,
+            palette=bkc,
             order=plot_order,
             alpha=0.7,
-            linewidth=0.75,
-            edgecolor="grey",
-            capsize=0.05,
+            linewidth=1,
+            edgecolor="k",
+            errorbar=("sd"),
+            capsize = 0.18,
+            err_kws={"linewidth": 0.75, 'color': 'k'},
         )
-        sns.swarmplot(
-            data=df, ax=axppio, palette=plot_colors, order=plot_order, size=3.0, linewidth=0.5
-        )
+        # need to set edge color separately
+        for i, patch in enumerate(bplot.patches):
+            clr = patch.get_facecolor()
+            patch.set_edgecolor('w')
+            patch.set_linewidth(.0)
+
+        sns.swarmplot(data=df, ax=axppio, palette=symc, order=plot_order, size=3.0, linewidth=0.5)
 
         axppio.set_ylabel("Amplitude (uV)")
         axppio.set_xlabel("Age Category")
@@ -2399,11 +2549,11 @@ def make_click_figure(subjs, example_subjects, STYLE):
     up_lets = ascii_letters.upper()
     ppio_labels = [up_lets[i] for i in range(ncols)]
     sizer = {
-        "A": {"pos": [0.05, 0.175, 0.1, 0.90], "labelpos": (-0.15, 1.05)},
-        "B": {"pos": [0.25, 0.175, 0.1, 0.90], "labelpos": (-0.15, 1.05)},
-        "C": {"pos": [0.49, 0.20, 0.12, 0.83], "labelpos": (-0.15, 1.05)},
-        "D": {"pos": [0.76, 0.22, 0.59, 0.36], "labelpos": (-0.15, 1.05)},
-        "E": {"pos": [0.76, 0.22, 0.12, 0.36], "labelpos": (-0.15, 1.05)},
+        "A": {"pos": [0.05, 0.175, 0.1, 0.90], "labelpos": (-0.05, 1.05)},
+        "B": {"pos": [0.25, 0.175, 0.1, 0.90], "labelpos": (-0.05, 1.05)},
+        "C": {"pos": [0.49, 0.20, 0.12, 0.83], "labelpos": (-0.05, 1.05)},
+        "D": {"pos": [0.76, 0.22, 0.59, 0.36], "labelpos": (-0.05, 1.05)},
+        "E": {"pos": [0.76, 0.22, 0.12, 0.36], "labelpos": (-0.05, 1.05)},
     }
 
     P = PH.arbitrary_grid(
@@ -2413,6 +2563,7 @@ def make_click_figure(subjs, example_subjects, STYLE):
         font="Arial",
         fontweight=STYLE.get_fontweights(),
         fontsize=STYLE.get_fontsizes(),
+        labelsize=12,
     )
     # P = PH.Plotter(
     #     (5,1),
@@ -2448,7 +2599,7 @@ def do_click_io_analysis(
     requested_stimulus_type: str = "Click",
     experiment: Union[dict, None] = None,
     example_subjects: list = None,
-    test_plots: bool=False,
+    test_plots: bool = False,
 ):
 
     # base directory
@@ -2475,7 +2626,7 @@ def do_click_io_analysis(
                 ioax = P.axarr[nex][0]
                 thrax = P.axarr[nex + 1][0]
                 ppioax = P.axarr[nex + 2][0]
- 
+
             print("\n\nstimulus_type: ", requested_stimulus_type)
 
             categories_done = compute_click_io_analysis(
@@ -2490,7 +2641,7 @@ def do_click_io_analysis(
                 example_subjects=example_subjects,
                 example_axes=example_axes,
                 categories_done=categories_done,
-                test_plots = test_plots,
+                test_plots=test_plots,
             )
 
             ioax.set_xlabel("dB SPL")
@@ -2562,7 +2713,9 @@ def test_age_re():
             print("No match")
 
 
-def find_files_for_subject(dataset: Union[str, Path], subj_data: dict = None, stim_types:list = None):
+def find_files_for_subject(
+    dataset: Union[str, Path], subj_data: dict = None, stim_types: list = None
+):
     """find_files_for_subject : Find the files for a given subject
     Return the list of files for the requested stimulus type, and the
     directory that holds those files.
@@ -2700,6 +2853,7 @@ def find_files_for_subject(dataset: Union[str, Path], subj_data: dict = None, st
 
     return subj_data
 
+
 def get_datasets(directory_names):
     subdata = None
     for directory in list(directory_names.keys()):
@@ -2718,14 +2872,13 @@ def get_datasets(directory_names):
             if not sub.name.startswith(filter):
                 continue
             subdata = find_files_for_subject(
-                dataset=sub,
-                subj_data=subdata,
-                stim_types = ["Click", "Interleaved_plateau", "Tone"]
+                dataset=sub, subj_data=subdata, stim_types=["Click", "Interleaved_plateau", "Tone"]
             )
     # for s in subdata.keys():
     #     for d in subdata[s]:
     #         print(s, d)
     return subdata
+
 
 if __name__ == "__main__":
 
@@ -2752,15 +2905,14 @@ if __name__ == "__main__":
 
     AR.get_experiment(config_file_name, "CBA_Age")
     directory_names = {  # values are symbol, symbol size, and relative gain factor
-        "/Volumes/Pegasus_002/ManisLab_Data3/abr_data/Reggie_CBA_Age": ["o", 3.0, 1.],
-        # "/Volumes/Pegasus_002/ManisLab_Data3/abr_data/Tessa_CBA": ["s", 3.0, 1.],
-        "/Volumes/Pegasus_002/ManisLab_Data3/abr_data/Ruilis ABRs": ["x", 3.0, 10.],
+        "/Volumes/Pegasus_002/ManisLab_Data3/abr_data/Reggie_CBA_Age": ["o", 3.0, 1.0],
+        # "/Volumes/Pegasus_002/ManisLab_Data3/abr_data/Ruilis ABRs": ["x", 3.0, 10.],
     }
- 
+
     subdata = get_datasets(directory_names)
     # select subjects for tuning analysis parameters in the configuration file.
     # subdata = get_datasets(directory_names)
-    tests  = False
+    tests = False
     if tests:
         test_subjs = ["N004", "N005", "N006", "N007"]
         newsub = {"Click": []}
@@ -2771,35 +2923,35 @@ if __name__ == "__main__":
                 # print(d)
                 if d["subject"] in test_subjs:
                     newsub["Click"].append(d)
-        
+
         subdata = newsub
         # for ns in subdata["Click"]:
-        # print(ns) 
+        # print(ns)
     # exit()
     test_plots = False
 
-    # do_click_io_analysis(
-    #     AR=AR,
-    #     ABR4=ABR4,
-    #     subject_data=subdata,
-    #     subject_prefix="CBA_",
-    #     output_file="CBA_Age_ABRs_Clicks_combined.pdf",
-    #     categorize="age",
-    #     requested_stimulus_type="Click",
-    #     example_subjects=["CBA_F_N002_p27_NT", "CBA_M_N017_p572_NT"],
-    #     test_plots = test_plots
-    # )
-    do_tone_map_analysis(
+    do_click_io_analysis(
         AR=AR,
         ABR4=ABR4,
         subject_data=subdata,
         subject_prefix="CBA_",
-        output_file="CBA_Age_ABRs_Tones_combined.pdf",
+        output_file="CBA_Age_ABRs_Clicks_combined.pdf",
         categorize="age",
-        requested_stimulus_type="Tone",
+        requested_stimulus_type="Click",
         example_subjects=["CBA_F_N002_p27_NT", "CBA_M_N017_p572_NT"],
-        test_plots = test_plots
+        test_plots=test_plots,
     )
+    # do_tone_map_analysis(
+    #     AR=AR,
+    #     ABR4=ABR4,
+    #     subject_data=subdata,
+    #     subject_prefix="CBA_",
+    #     output_file="CBA_Age_ABRs_Tones_combined.pdf",
+    #     categorize="age",
+    #     requested_stimulus_type="Tone",
+    #     example_subjects=["CBA_F_N002_p27_NT", "CBA_M_N017_p572_NT"],
+    #     test_plots = test_plots
+    # )
 
     # with open("all_tone_map_data.pkl", "rb") as f:
     #     all_tone_map_data = pickle.load(f)
