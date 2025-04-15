@@ -280,7 +280,7 @@ class Analyzer(object):
         get_reference: bool = False,
         i_reference: int = 0,
     ):
-        fs = 1.0 / self.sample_rate
+        fs = self.sample_freq # 1.0 / self.sample_rate
         psd = [None] * self.waves.shape[0]
         psdwindow = np.zeros(self.waves.shape[0])
         cmap = matplotlib.cm.get_cmap("tab20")
