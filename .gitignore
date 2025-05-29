@@ -7,11 +7,13 @@
 
 
 # virtual envirionments
-pyabr_venv/
+pyabr_venv/*
 # ps_venv is an old version of the virtual environment
-ps_venv/
+ps_venv/*
 # data files
 abr_data/
+__pycache__/.mypy_cache
+pyABR.egg-info/
 
 ### macOS ###
 # General
