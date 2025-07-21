@@ -9,6 +9,7 @@ import matplotlib.cm
 import matplotlib.pyplot as mpl
 import numpy as np
 import scipy.signal
+import pylibrary.tools.cprint as CP
 
 import src.peakdetect as peakdetect  # from Brad Buran's project, but cloned and modified here
 
@@ -32,7 +33,6 @@ class Analyzer(object):
         self.baselineMarker = "+"
         self.sample_freq = None
         self.p1n1p2 = None
-
 
     def set_baseline(self, timebase, baseline: List = [0.020, 0.025]):
         if np.max(timebase) < baseline[0]:
@@ -59,6 +59,7 @@ class Analyzer(object):
             Time window to use for the response, by default [2.2, 8.0]
         dev: for peak detection, deviation (4-5 seems good)
         """
+        # CP.cprint("g", "Analyzer: analyzing")
         self.waves = waves
         self.timebase = timebase
         self.sample_freq = 1.0 / (timebase[1] - timebase[0])
@@ -71,7 +72,6 @@ class Analyzer(object):
         # print("max of waves: ", np.nanmax(self.waves))
         self.get_triphasic(min_lat=response_window[0], dev=dev)
         self.ppio = self.peaktopeak(response_window) - self.peaktopeak(baseline)
-
 
         # self.true_threshold, self.median_sd = self.thresholds(timebase=timebase, waves=waves, spls=spls)
         # self.specpower(waves)
@@ -120,6 +120,7 @@ class Analyzer(object):
             baseline time window.
 
         """
+        CP.cprint("g", "get_triphasic")
 
         p1 = {}
         n1 = {}
@@ -141,7 +142,7 @@ class Analyzer(object):
                     self.sample_freq,
                     -waves[j, :],  # flip to find negative peak
                     nzc_algorithm_kw={"dev": dev},
-                    guess_algorithm_kw={"min_latency": self.timebase[p1[j][0]]+min_diff},
+                    guess_algorithm_kw={"min_latency": self.timebase[p1[j][0]] + min_diff},
                 )  # find negative peaks after positive peaks
             else:
                 n1[j] = np.nan
@@ -150,7 +151,7 @@ class Analyzer(object):
                     self.sample_freq,
                     waves[j, :],
                     nzc_algorithm_kw={"dev": dev},
-                    guess_algorithm_kw={"min_latency": self.timebase[n1[j][0]]+min_diff},
+                    guess_algorithm_kw={"min_latency": self.timebase[n1[j][0]] + min_diff},
                 )  # find negative peaks after positive peaks
             else:
                 p2[j] = np.nan
@@ -160,14 +161,14 @@ class Analyzer(object):
                 u[ip] = [int(p) for p in u[ip]]
         self.p1n1p2 = {"p1": p1, "n1": n1, "p2": p2}
         nws = self.waves.shape[0]
-        self.p1_latencies = np.zeros(nws)*np.nan
-        self.p1_amplitudes = np.zeros(nws)*np.nan
-        self.n1_latencies =np.zeros(nws)*np.nan
-        self.n1_amplitudes = np.zeros(nws)*np.nan
-        self.p1_indices = [0]*nws
-        self.n1_indices = [0]*nws
-        self.p1n1p2_amplitudes = np.zeros(nws)*np.nan
-        self.p1n1_amplitudes = np.zeros(nws)*np.nan
+        self.p1_latencies = np.zeros(nws) * np.nan
+        self.p1_amplitudes = np.zeros(nws) * np.nan
+        self.n1_latencies = np.zeros(nws) * np.nan
+        self.n1_amplitudes = np.zeros(nws) * np.nan
+        self.p1_indices = [0] * nws
+        self.n1_indices = [0] * nws
+        self.p1n1p2_amplitudes = np.zeros(nws) * np.nan
+        self.p1n1_amplitudes = np.zeros(nws) * np.nan
         for j in range(self.waves.shape[0]):
             # j = len(spls) - i - 1
             p1_index = self.p1n1p2["p1"][j][0]
@@ -195,21 +196,21 @@ class Analyzer(object):
         latencies and amplitudes to be more consistent with the expected behavior.
         First, we fit the latencies with a function against dB levels.
         Then, we find the closest peaks to the fit latency
-        and replace the amplitudes with those values. 
+        and replace the amplitudes with those values.
         This is also done for the weaker stimulus levels, but we
         just grab the values associated with the latencies.
 
-        The expected behavior is that the 
+        The expected behavior is that the
         latencies should follow a regular progression,
         and the amplitudes should drop to the noise level
         at the lower sound levels.
         """
-
+        CP.cprint("g", "adjust_triphasic")
         latmap_n1 = []
         latmap_p1 = []
         spllat = []
         threshold_value = dbs[threshold_index]
-        fit_data = list(range(int(len(dbs)/2), len(dbs)))
+        fit_data = list(range(int(len(dbs) / 2), len(dbs)))
 
         dbs = np.array(dbs)
         for j, spl in enumerate(dbs[fit_data]):
@@ -228,18 +229,19 @@ class Analyzer(object):
         for j, spl in enumerate(dbs):
             if spl > threshold_value:
                 continue  # don't change if above rms threshold
-            ti_n1 = np.abs(fitline_n1_lat[j] - self.timebase).argmin()  # get data closest to fit latency
+            ti_n1 = np.abs(
+                fitline_n1_lat[j] - self.timebase
+            ).argmin()  # get data closest to fit latency
             ti_p1 = np.abs(fitline_p1_lat[j] - self.timebase).argmin()
             self.p1_latencies[j] = self.timebase[ti_p1]
-            self.p1_amplitudes[j] = np.mean(self.waves[j, ti_p1-10:ti_p1+10])
+            self.p1_amplitudes[j] = np.mean(self.waves[j, ti_p1 - 10 : ti_p1 + 10])
             self.n1_latencies[j] = self.timebase[ti_n1]
-            self.n1_amplitudes[j] = np.mean(self.waves[j, ti_n1-10:ti_n1+10])
+            self.n1_amplitudes[j] = np.mean(self.waves[j, ti_n1 - 10 : ti_n1 + 10])
             # require the p1 be larger than the n1 - otherwise we are looking at noises
-            self.p1n1_amplitudes[j] = max(self.p1_amplitudes[j] - self.n1_amplitudes[j], 0.)
+            self.p1n1_amplitudes[j] = max(self.p1_amplitudes[j] - self.n1_amplitudes[j], 0.0)
 
         self.fitline_p1_lat = fitline_p1_lat
         self.fitline_n1_lat = fitline_n1_lat
-
 
     def measure_rms(self, time_window: Union[List, np.ndarray]) -> np.ndarray:
         """Measure the rms values in a set of traces.
@@ -256,7 +258,7 @@ class Analyzer(object):
             peak-to-peak measure of data in the window for each wave
 
         """
-
+        # CP.cprint("g", "analyzer: measure_rms")
         tx = self.gettimeindices(time_window)
         rms = np.zeros(self.waves.shape[0])
         for i in range(self.waves.shape[0]):
@@ -280,7 +282,8 @@ class Analyzer(object):
         get_reference: bool = False,
         i_reference: int = 0,
     ):
-        fs = self.sample_freq # 1.0 / self.sample_rate
+        # CP.cprint("g", "analyzer: Compute specpower")
+        fs = self.sample_freq  # 1.0 / self.sample_rate
         psd = [None] * self.waves.shape[0]
         psdwindow = np.zeros(self.waves.shape[0])
         cmap = matplotlib.cm.get_cmap("tab20")
@@ -332,8 +335,6 @@ class Analyzer(object):
         self.psdwindow = psdwindow
         return psdwindow
 
-
-
     def thresholds(
         self,
         timebase: np.ndarray,
@@ -383,6 +384,7 @@ class Analyzer(object):
         float
             threshold value (SPL)
         """
+        CP.cprint("g", "analyzer: Thresholds")
         self.timebase = timebase
         refwin = self.gettimeindices(baseline_window)
         if ref_db is not None:
@@ -462,11 +464,6 @@ class Analyzer(object):
                     # break
                     continue
 
-            # print('p1n1p2: p1: ', self.p1n1p2['p1'][j][0], waves[i, self.p1n1p2['p1'][j][0]])
-            # print('p1n1p2: n1: ', self.p1n1p2['n1'][j][0], waves[i, self.p1n1p2['n1'][j][0]])
-            # print(waves[j, self.p1n1p2['p1'][j][0]:self.p1n1p2['n1'][j][0]])
-
-            # print(self.median_sd * SD)
             if p1n1p2_j >= self.median_sd:
                 true_thr = spls[j]
                 threshold_index = j
