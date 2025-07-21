@@ -5,7 +5,7 @@
 *.pdf
 *.xlsx
 
-
+abra/
 # virtual envirionments
 pyabr_venv/*
 # ps_venv is an old version of the virtual environment
