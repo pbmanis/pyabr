@@ -26,9 +26,10 @@ def fit_thresholds(x, y, baseline, threshold_factor=2.5, spl_range=[1, 90]):
     Hillmodel.set_param_hint("v50", min=30.0, max=100.0)
     Hillmodel.set_param_hint("n", min=0.1, max=50.0)
     params = Hillmodel.make_params(vmax=4, v50=60.0, n=10.0)
-    x = np.array(x)
-    y = np.array(y)
-    print(len(x), len(y))
+    # remove nan values from x, and apply to y
+    xnan = np.argwhere(y != np.nan)
+    x = np.array(x[xnan])
+    y = np.array(y[xnan])
     if len(x) > 2:
         result = Hillmodel.fit(y, params, x=x, nan_policy='omit')
         ys = Hillmodel.eval(x=xs, params=result.params)
