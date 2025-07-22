@@ -3,9 +3,8 @@ Tools for generating auditory stimuli.
 """
 from __future__ import division
 import numpy as np
-import scipy
+import scipy.signal
 import scipy.io.wavfile
-import resampy
 import src.message_box as message_box
 
 MBox = message_box.MessageBox
@@ -21,7 +20,7 @@ class Sound(object):
     """
     Base class for all sound stimulus generators.
     """
-    def __init__(self, duration, rate=100e3, **kwds):
+    def __init__(self, duration:float=1.0, rate:float=100e3, **kwds):
         """
         Parameters
         ----------
@@ -118,7 +117,7 @@ class Sound(object):
         if name in self.opts:
             return self.opts[name]
         else:
-            return object.__getattr__(self, name)
+            return object.__getattr__(self, name)  # type:ignore
 
 
 class TonePip(Sound):
@@ -652,6 +651,7 @@ class ComodulationMasking(Sound):
         #print(('flanking phases: ', ph))
         #print (len(flanktone))
         #print(('flanking freqs: ', flankfs))
+        maskers = np.zeros_like(onfreqmasker)
         for i, fs in enumerate(flankfs):
             flanktone[i] = sinusoidal_modulation(self.time, flanktone[i],
                     o['maskst'], o['fmod'], o['dmod'], ph[i])
@@ -665,6 +665,7 @@ class ComodulationMasking(Sound):
 
 class DynamicRipple(Sound):
     def __init__(self, **kwds):
+        raise NotImplementedError("DynamicRipple is not yet fully implemented")
         for k in ['rate', 'duration']:
             if k not in kwds:
                 raise TypeError("Missing required argument '%s'" % k)
@@ -757,13 +758,11 @@ class RandomSpectrumShape(Sound):
             else:
                 a = 0.
             amplist[i:i+groupsize] = 20.0*np.log10(a + db)
+        result = np.zeros_like(self.time)
         for i in range(len(freqlist)):
             wave = piptone(self.time, o['ramp_duration'], o['rate'], freqlist[i],
                     amplist[i], o['pip_duration'], o['pip_start'], pip_phase=np.pi*2.0*np.random.rand())
-            if i == 0:
-                result = wave
-            else:
-                result = result + wave
+            result = result + wave
         return result/(np.sqrt(np.mean(result**2.0))) # scale by rms level
         
 
@@ -832,7 +831,7 @@ class ReadWavefile(Sound):
         stimulus = np.hstack((delay_array, stimulus))[:maxpts]
 
         if self.opts['rate'] != fs_wav:
-            stimulus = resampy.resample(stimulus, fs_wav, self.opts['rate'])
+            stimulus = scipy.signal.resample(stimulus, fs_wav, self.opts['rate'])
         self.opts['duration'] = (stimulus.shape[0]-1)/self.opts['rate'] # compute the duration, match for linspace calculation used in time.
         self._time = None
         self.time   # requesting time should cause recalulation of the time
@@ -1009,7 +1008,7 @@ def pipnoise(t, rt, Fs, dBSPL, pip_dur, pip_start, seed):
     return pin
         
    
-def piptone(t, rt, Fs, F0, dBSPL, pip_dur, pip_start, alternate=False):
+def piptone(t, rt, Fs, F0, dBSPL, pip_dur, pip_start, pip_phase:float=0., alternate=False):
     """
     Create a waveform with multiple sine-ramped tone pips. Output is in 
     Pascals.
@@ -1030,6 +1029,8 @@ def piptone(t, rt, Fs, F0, dBSPL, pip_dur, pip_start, alternate=False):
         duration of pip including ramps
     pip_start : float
         list of starting times for multiple pips
+    pip_phase: float
+        phase of the pip, in radians (default: 0)
     alternate : bool
         If true, successive pips are 180 deg out of phase
 
@@ -1044,7 +1045,7 @@ def piptone(t, rt, Fs, F0, dBSPL, pip_dur, pip_start, alternate=False):
     pip_t = np.linspace(0, pip_dur, pip_pts)
     # pip = np.sqrt(2) * dbspl_to_pa(dBSPL) * np.sin(2*np.pi*F0*pip_t)  # unramped stimulus
 
-    pip = dbspl_to_pa(dBSPL) * np.sin(2*np.pi*F0*pip_t)  # unramped stimulus
+    pip = dbspl_to_pa(dBSPL) * np.sin(2*np.pi*F0*pip_t + pip_phase)  # unramped stimulus
     # add ramp
     ramp_pts = int(rt * Fs) + 1
     ramp = np.sin(np.linspace(0, np.pi/2., ramp_pts))**2
@@ -1200,6 +1201,11 @@ def make_ssn(rate, duration, sig, samplingrate):
         z, t = noise_from_signal(sig, rate, keep_env=True)
         return z, t
 
+def next_pow_2(n):
+    """
+    Calculates the smallest power of 2 greater than or equal to n.
+    """
+    return 2**np.ceil(np.log2(n)).astype(int)
 
 def noise_from_signal(x, fs=40000, keep_env=True):
     """
