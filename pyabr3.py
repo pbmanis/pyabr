@@ -11,7 +11,7 @@ import datetime
 import pickle
 import platform
 import time
-import toml
+import tomllib
 from pathlib import Path
 
 import numpy as np
@@ -54,7 +54,7 @@ class PyABR(object):
         Read the current protocol
         """
         assert self.ptreedata is not None  # do not call before building gui
-        self.pars = toml.load(self.current_protocol)
+        self.pars = tomllib.load(self.current_protocol)
         with open(self.current_protocol, "r") as fh:
             self.rawtoml = fh.read()
         # paste the raw string into the text box for reference
