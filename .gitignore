@@ -4,10 +4,19 @@
 *.png
 *.pdf
 *.xlsx
+# files inadvertently in the main directory
+GlyT2*
+CBA_*
+NIHL_*
+Source_*
+
+2025-*
 
 abra/
 # virtual envirionments
 pyabr_venv/*
+.venv/*
+
 # ps_venv is an old version of the virtual environment
 ps_venv/*
 # data files
