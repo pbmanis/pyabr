@@ -4,6 +4,7 @@
 *.png
 *.pdf
 *.xlsx
+*.csv
 # files inadvertently in the main directory
 GlyT2*
 CBA_*
