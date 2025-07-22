@@ -1,0 +1,49 @@
+[project]
+name = "pyabr3"
+version = "0.2.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    # development utilities and general tools
+    "black>=24.8",
+    "Pint>=0.24",
+    "isort==5.0.2",
+    "mypy>=1.13",
+    "pytest==8.4.1",
+    # Specific requirements
+    "nidaqmx",
+    "matplotlib>=3.10.1",
+    "pandas",
+    "seaborn",
+    "nose==1.3.7",
+    "numpy>=2.3.0",
+    "psutil>=6.1.0",
+    "pyparsing==2.4.0",
+    # "resampy==0.4.3",
+    "scipy>=1.15.0",
+    "pyaudio",  # this might have to be done manually
+    "sounddevice>=0.5.2",
+    # get pyaudio win-amd64.whl file from https://www.lfd.uci.edu/~gohlke/pythonlibs/
+    # make a downloads file in pysounds, and put it in the downloads directory
+    # 11/2024: Gohlke's site is permanently down. 
+    # 11/2024: It looks like a precompiled windows version is available for python3.13 on PyPI.
+    # so, this should work.
+    "pyqt6>=6.7",
+    "pyqt6-sip>=13.8",
+    "pyqtgraph>=0.13.7",
+
+    # pywin32
+    # MetaArray==2.1.1
+    # ephys @ git+https://github.com/pbmanis/ephys.git#egg=ephys
+    # pylibrary @ git+https://github.com/pbmanis/pylibrary.git#egg=pylibrary@bd03b58
+    # -e C:/Users/experimenters/Desktop/Python/pylibrary
+    # "pylibrary @ git+https://github.com/pbmanis/pylibrary.git#egg=pylibrary@main",
+
+]
+
+[tool.uv.sources]
+pylibrary = { git = "https://github.com/pbmanis/pylibrary.git" }
+# resampy = { git = "https://github.com/bmcfee/resampy.git", branch = "main" }
+
+
