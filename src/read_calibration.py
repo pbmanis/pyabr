@@ -115,9 +115,7 @@ def plot_calibration(caldata, plot_target = None):
             win = pg.GraphicsLayoutWidget(show=True, title="ABR Data Plot")
             win.resize(500, 500)
             win.setWindowTitle(f"File: {caldata['filename']}")
-
-        
-            pl = win.addPlot(title=f"Calibration")
+            pl = win.addPlot(title=f"Calibration")  # type:ignore
         else:
             pl = plot_target
         freqs = caldata['freqs']

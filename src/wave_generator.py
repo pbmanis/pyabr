@@ -7,18 +7,18 @@ import src.sound as sound
 import src.protocol_reader as protocol_reader
 import src.read_calibration as read_calibration
 
-    """ Wave generator : part of pyabr3
-    This class generates a clicks, tone pips, and "interleaved ramps"
-    for use in ABR experiments. The waveforms are generated at the maximal
-    voltage, and attenuated using the attenuators on the TDT system.
+""" Wave generator : part of pyabr3
+This class generates a clicks, tone pips, and "interleaved ramps"
+for use in ABR experiments. The waveforms are generated at the maximal
+voltage, and attenuated using the attenuators on the TDT system.
 
-    Genearlly, the waveforms are generated at a high sample rate (250-500 kHz)
-    to minimize distortion. For this we use a National Instruments NI6371 DAC
-    card. The waveforms are then attenuated using the PA5 attenuators,
-    Some attention is paid to trying to maximize the dynamic range, as the
-    DAC is "only" 16 bits (96 dB).
-  
-    """
+Genearlly, the waveforms are generated at a high sample rate (250-500 kHz)
+to minimize distortion. For this we use a National Instruments NI6371 DAC
+card. The waveforms are then attenuated using the PA5 attenuators,
+Some attention is paid to trying to maximize the dynamic range, as the
+DAC is "only" 16 bits (96 dB).
+
+"""
 
 class WaveGenerator:
     def __init__(self, caldata):
@@ -30,9 +30,10 @@ class WaveGenerator:
         self.caldata = caldata
         self.multi_attn_flatten_spectra = False  # try to flatten using
             # mutiple attenaution levels and less DAC dynamic range
+        return self
 
-    def setup(self, protocol: Union[str, Path] = None, frequency: float = 500000.0,
-              config:dict=None):
+    def setup(self, protocol: Union[str, Path], frequency: float = 500000.0,
+              config:Union[dict, None]=None):
         self._set_protocol(protocol)
         self._set_output_frequency(frequency)
         self.config = config
@@ -379,9 +380,9 @@ class WaveGenerator:
             #     self.nwaves = 1
                 # self.protocol["stimuli"]["nreps"]
             case _:
-                raise ValueError(f"Unrecongnized wavetype: {wavetype:s}")
+                raise ValueError(f"Unrecognized wavetype: {wavetype:s}")
 
-    def dbscale(self, v_in: np.array, v_scale_factor: float = 1.0, dbattn: float = 0):
+    def dbscale(self, v_in: np.ndarray, v_scale_factor: float = 1.0, dbattn: float = 0):
         """ dbscale: Convert a voltage array from the "standard" 94 dB (1V data)
         to a value referenced to the calibration, with the appropriate attenuation.
 
@@ -409,7 +410,7 @@ class WaveGenerator:
             win = pg.GraphicsLayoutWidget(show=True, title="ABR Data Plot")
             win.resize(640, 480)
             win.setWindowTitle(f"Protocol: {str(Path(self.current_protocol).parent)}")
-            wplot = win.addPlot()
+            wplot = win.addPlot()  # type: ignore
         else:
             wplot = plot_object
         first_sound = self.wave_matrix[list(self.wave_matrix.keys())[n]]
@@ -440,8 +441,14 @@ class WaveGenerator:
 
 if __name__ == "__main__":
 
-    WG = WaveGenerator()
 
-    WG.setup(protocol=WG.stim, frequency=500000)
-    WG.make_waveforms(WG.protocol["protocol"]["stimulustype"])
-    WG.plot_stimulus_wave()
+    configfilename = "config/abrs_test.cfg"
+    # get the latest calibration file:
+    cfg = configfile.readConfigFile(configfilename)
+    fn = Path(cfg['calfile'])
+   
+    WG = WaveGenerator(caldata=read_calibration.get_calibration_data(fn) )
+
+    WG.setup(protocol=WG.stim, frequency=500000)  # type: ignore
+    WG.make_waveforms(WG.protocol["protocol"]["stimulustype"]) # type: ignore
+    WG.plot_stimulus_wave() # type: ignore

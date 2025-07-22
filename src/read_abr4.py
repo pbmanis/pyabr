@@ -565,7 +565,7 @@ class READ_ABR4:
         highpass: Union[float, None],
         maxdur: float,
         hide_treatment: bool = False,
-        metadata: dict = None,
+        metadata: Union[dict, None] = None,
         pdf=None,
     ):
         """plot_dataset
