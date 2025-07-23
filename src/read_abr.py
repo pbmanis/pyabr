@@ -225,6 +225,9 @@ def get_analyzed_click_data(
         waves *= scale
         if invert:
             waves = -waves
+            print("INVERTED!!!")
+        else:
+            print("NOT INVERTED!!!")
         print("get analyzed click data:: metadata: ", metadata)
         print("gacd: wave shape: ", waves.shape)
         print("gacd: Max time: ", np.max(tb), "sample rate: ", metadata["record_frequency"])
@@ -254,6 +257,9 @@ def get_analyzed_click_data(
         waves *= scale
         if invert:
             waves = -waves
+            print("INVERTED!!!")
+        else:
+            print("NOT INVERTED!!!")
         # print("Read waves, shape= ", waves.shape)
         # print("metadata: ", metadata)
     dbs = metadata["stimuli"]["dblist"]
@@ -266,8 +272,15 @@ def get_analyzed_click_data(
     # print(np.max(waves))
 
     WaveAnalyzer.analyze(timebase=tb, waves=waves[:, 0, :])
-    dbs = metadata["stimuli"]["dblist"]
-    # ABR4.dblist
+    dbs = metadata["stimuli"]["dblist"] 
+    # print(dir(WaveAnalyzer))
+    # f, ax = mpl.subplots(1,1)
+    # for i in range(WaveAnalyzer.waves.shape[0]):
+    #     ax.plot(tb, WaveAnalyzer.waves[i, :]/metadata["amplifier_gain"],
+    #     )
+                 
+    # mpl.show()
+    # exit()
     print("  get analyzed click data: dbs: ", dbs)
     return WaveAnalyzer, dbs, metadata
 
@@ -514,8 +527,7 @@ def set_gain_and_scale(subj, AR):
     if "default" not in scd.keys():
         raise ValueError("'default' values missing from ABR_parameters")
 
-    # print("Parameters: ", scd)
-    # set the defaults.
+
     scale = scd["default"]["scale"]
     invert = scd["default"]["invert"]
     min_lat = scd["default"]["minimum_latency"]
@@ -528,14 +540,16 @@ def set_gain_and_scale(subj, AR):
         invert = scd[subj["name"]]["invert"]
         min_lat = scd[subj["name"]]["minimum_latency"]
         fit_index = scd[subj["name"]]["fit_index"]
-
+        print("Set Specific parameters for subject: ", subj["name"])
+        print("Scale: ", scale, "Invert: ", invert, "Minimum Latency: ", min_lat)
     else:
         # CP.cprint(
         #     "r",
         #     f"\nsubject name: {subj['name']!s} is NOT experiment ABR_parameters list - checking abbreviated versions",
         # )
         smatch = REX.re_subject.match(subj["name"])
-        # CP.cprint("m", f"SMATCH: {smatch}, {subj['name']:s}")
+        CP.cprint("m", f"SMATCH: {smatch}, {subj['name']:s}")
+
         if smatch["subject"] is not None:
             sname = smatch["subject"]
             if sname.startswith("N0"):
@@ -549,11 +563,11 @@ def set_gain_and_scale(subj, AR):
                 min_lat = scd["T0"]["minimum_latency"]
                 fit_index = scd["T0"]["fit_index"]
             else:
+                print("Using defaults for subject: ", sname)
                 scale = 1
                 invert = False
                 min_lat = 0.0
                 fit_index = 0
-                # raise ValueError(f"Subject name {sname:s} not recognized as a category for scaling")
         else:
             raise ValueError(
                 f"Subject name {subj['name']:s} not in configuration ABR_parameters dictionary"
@@ -588,7 +602,7 @@ def check_file(
                 donefiles.append(fname[:15])
     scale = 1
 
-    CP.cprint("c", f"Testing for subject name: {subj['name']:s}, {subj['name'][6]:s}")
+    CP.cprint("c", f"Testing for subject name: {subj['name']:s}")
 
     if (
         AR.experiment["ABR_subject_excludes"] is not None
@@ -648,6 +662,7 @@ def export_for_abra_clicks(subj: dict, dbs: list, waveana: object):
     nold = len(oldx)
     ldb = []
     delay_n = int(0.0015 * new_freq)  # 2 ms
+    # f, ax = mpl.subplots(1, 1, figsize=(12, 8))
     for i, db in enumerate(dbs):
         wave_interpolated = np.interp(newx, oldx, waveana.waves[i, :nold])
         row = {
@@ -659,14 +674,16 @@ def export_for_abra_clicks(subj: dict, dbs: list, waveana: object):
         print("interpol: ", wave_interpolated.shape)
         for n in range(nsamps):
             row.update({f"{n:d}": wave_interpolated[n] * 1e6})
+            # ax.plot(wave_interpolated)
         ldb.append(row)
         # print("Waveana waves: ", waveana.waves.shape, "sample freq: ", waveana.sample_freq)
+    # mpl.show()
     df = pd.DataFrame.from_dict(ldb)
     abrap = Path("abra")
     if not abrap.exists():
         abrap.mkdir()
-    df.to_csv(f"abra/{subj['name']:s}_click_data.csv", index=False)
-    print("wrote to: ", f"abra/{subj['name']:s}_click_data.csv")
+    df.to_csv(f"abra/Clicks/{subj['name']:s}_click_data.csv", index=False)
+    print("wrote to: ", f"abra/Clicks/{subj['name']:s}_click_data.csv")
 
 def export_for_abra_tones(subj: dict, waves: np.ndarray, metadata: dict):
 
@@ -718,7 +735,7 @@ def export_for_abra(
     AR: object,
     ABR4: object,
 ) -> dict:
-
+    print("\n\nCALLING EXPORT FOR ABRA")
     donefiles = []
     waveana = None  # in case the analysis fails or the dataset was excluded
     # print("requested file type: ", requested_stimulus_type)
@@ -733,7 +750,18 @@ def export_for_abra(
         fname = filename.name
         if fname.startswith("."):  # skip hidden files
             continue
+        # print("Donefiles: ", donefiles, fname[:13], filename)
+        processed = False
+        for donefile in donefiles:
+            # print("donefile: ", donefile, "fname: ", fname[:13])
+            if donefile.startswith(fname[:13]):
+                # print(f"Skipping file {fname:s} as it has already been processed")
+                processed = True
+                break
 
+        # print("processed: ", processed)
+        if processed:
+            continue
         donefiles, stim_type, ok = check_file(
             AR=AR,
             filename=filename,
@@ -1636,6 +1664,8 @@ def compute_click_io_analysis(
         exit()
     return
 
+    # this snext section saves the data to csv files,
+    # but also some other stuff we don't really need... 
     df_io.to_csv("io_data.csv", index=False)
     df_abr.to_csv("abr_data.csv", index=False)  # saves in long form for R
     categories_done = [v[1] for v in categories_done]
@@ -2277,13 +2307,13 @@ if __name__ == "__main__":
             "/Volumes/Pegasus_004/ManisLab_Data3/abr_data/Reggie_NIHL": ["o", 3.0, 1.0],
         }
 
-        subdata = get_datasets(directory_names, filter="Glyt2")
+        subdata = get_datasets(directory_names, filter="VGATEYFP")
         print("Subdata: ", subdata.keys())
         # select subjects for tuning analysis parameters in the configuration file.
         tests = False
         if tests:
-            stim_type = "Tone"
-            test_subjs = ["WJ11"]  # , "XT9", "XT11", "N007"]
+            stim_type = "Click"
+            test_subjs = ["UJ7"]  # , "XT9", "XT11", "N007"]
             newsub = {stim_type: []}
             # print(subdata.keys())
             for sub in subdata:
@@ -2304,6 +2334,7 @@ if __name__ == "__main__":
         #     export_for_abra(AR=AR, ABR4=ABR4, subj = subj, requested_stimulus_type="Click")
         stim ="Tone"
         stim = "Interleaved_plateau"
+        stim="Click"
         # print("\nSubdata IP: ", subdata[stim])
         # print("\nSubdata Click: ", subdata["Click"])
         # print("\nSubdata Tone: ", subdata["Tone"])
@@ -2339,3 +2370,4 @@ if __name__ == "__main__":
         # plot_tone_map_data(ax, all_tone_map_data=all_tone_map_data)
 
     # mpl.show()
+
