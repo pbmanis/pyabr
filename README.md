@@ -209,3 +209,112 @@ See the requirements.txt file for dependencies needed for installation
 Note specifically the need for tdtpy, 
 
 * Tested with NI6371 only.
+
+Analysis
+========
+
+There are several different ways to analyze this data. 
+
+The built-in analysis routines work, but are rather touchy and may require more programming to work for specific cases. 
+
+The preferred method:
+---------------------
+
+The preferred method uses a 2-step "pipeline" starting with read_abr.py to convert the data to a format that can be used by the ABRA program (Erra et al. 2025, PMID:38948763).
+This can be done by editing the "main" section of read_abr to read your data set. Note that reading the 
+data sets depends on the _filename/directory_  structure, which is parsed by a regex. 
+
+Below is example code for parsing in the main part of read_abr; the call to export_abra does the actual export.
+Whether you exprort click or tone data depends on the value of "stim_type".
+
+After parsing the files into a CSV format that is suitable for ABRA, 
+run plot_ABRA_csv.py to plot the data. The "__main__" routine in plot_ABRA_csv.py
+will need to be edited to point to the right files and to select what will be plotted. 
+
+
+'''
+    AR = AnalyzeABR()
+    ABR4 = read_abr4.READ_ABR4()
+
+    config_file_name = "Path to an ephys config file/config/experiments.cfg"
+    expt = "GlyT2_NIHL"  # definition of experiment in the config file
+    if expt == "CBA":
+        AR.get_experiment(config_file_name, "CBA_Age")
+        directory_names = {  # values are symbol, symbol size, and relative gain factor
+            "/Volumes/Pegasus_002/ManisLab_Data3/abr_data/Reggie_CBA_Age": ["o", 3.0, 1.0],
+            # "/Volumes/Pegasus_002/ManisLab_Data3/abr_data/Ruilis ABRs": ["x", 3.0, 10.],
+        }
+
+        subdata = get_datasets(directory_names)
+        # select subjects for tuning analysis parameters in the configuration file.
+        # subdata = get_datasets(directory_names)
+        tests = False
+        if tests:  # pick a few subjects to run before running the whole thing.
+            test_subjs = ["N004", "N005", "N006", "N007"]
+            newsub = {"Click": []}
+            # print(subdata.keys())
+            for sub in subdata:
+                # print(sub)
+                for d in subdata[sub]:
+                    # print(d)
+                    if d["subject"] in test_subjs:
+                        newsub["Click"].append(d)
+
+            subdata = newsub
+        test_plots = False
+
+        do_click_io_analysis(
+            AR=AR,
+            ABR4=ABR4,
+            subject_data=subdata,
+            subject_prefix="CBA_",  # must be set to the start of the directory name holding the data
+            output_file="CBA_Age_ABRs_Clicks_combined.pdf",  # may not be generated ?
+            categorize="age_category",
+            requested_stimulus_type="Click",
+            # example_subjects=["CBA_F_N002_p27_NT", "CBA_M_N017_p572_NT"],
+            test_plots=test_plots,
+        )
+
+    if expt == "GlyT2_NIHL":
+        AR.get_experiment(config_file_name, "GlyT2_NIHL")
+        directory_names = {  # values are symbol, symbol size, and relative gain factor
+            "/Volumes/Pegasus_004/ManisLab_Data3/abr_data/Reggie_NIHL": ["o", 3.0, 1.0],
+        }
+
+        subdata = get_datasets(directory_names, filter="VGATEYFP")
+        print("Subdata: ", subdata.keys())
+        # select subjects for tuning analysis parameters in the configuration file.
+        tests = False
+        if tests:
+            stim_type = "Click"
+            test_subjs = ["UJ7"]  # , "XT9", "XT11", "N007"]
+            newsub = {stim_type: []}
+            # print(subdata.keys())
+            for sub in subdata:
+                # print(sub)
+                for d in subdata[sub]:
+                    # print(d)
+                    if d["subject"] in test_subjs:
+                        newsub[stim_type].append(d)
+
+            subdata = newsub
+
+        test_plots = False
+
+        # uncomment this to write the click csv files for the ABRA program.
+        # for subj in subdata['Click']:
+        #     print("Subject: ", subj
+        #     )
+        #     export_for_abra(AR=AR, ABR4=ABR4, subj = subj, requested_stimulus_type="Click")
+        stim ="Tone"
+        stim = "Interleaved_plateau"
+        stim="Click"
+        # print("\nSubdata IP: ", subdata[stim])
+        # print("\nSubdata Click: ", subdata["Click"])
+        # print("\nSubdata Tone: ", subdata["Tone"])
+        for n, subj in enumerate(subdata[stim]):
+            print("Subject: ", subj["subject"])
+            export_for_abra(AR=AR, ABR4=ABR4, subj=subj, requested_stimulus_type=stim)
+    '''
+
+
