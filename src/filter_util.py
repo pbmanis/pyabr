@@ -43,7 +43,7 @@ from random import sample
 
 import numpy as np
 import scipy.signal
-from numba import jit
+
 from numpy import ma as ma
 from scipy import fftpack as spFFT
 
