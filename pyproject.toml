@@ -21,7 +21,7 @@ dependencies = [
     # "numba", 
     "psutil>=6.1.0",
     "pyparsing>=3.2.3",
-    # "resampy==0.4.3",
+    "resampy==0.4.3",
     "scipy>=1.15.0",
     "pyaudio",  # this might have to be done manually
     "sounddevice>=0.5.2",
