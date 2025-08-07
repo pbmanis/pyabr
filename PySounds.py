@@ -64,7 +64,7 @@ class PySounds:
         try:
             import os
 
-            if os.name is not "nt":
+            if os.name !="nt":
                 assert 0  # force use of pyaudio if not on windows xp/nt.
             if self.debugFlag:
                 print("PySounds.init: OS is Windows (NT or XP)")
@@ -126,7 +126,7 @@ class PySounds:
             ]
             if self.samp_cof_flag > 5:
                 self.samp_cof_flag = 5
-            a = self.RP21.LoadCOFsf("C:\pyStartle\startle2.rco", self.samp_cof_flag)
+            a = self.RP21.LoadCOFsf("C:\\pyStartle\\startle2.rco", self.samp_cof_flag)
             if a > 0:
                 print(
                     "PySounds.init: Connected to TDT RP2.1 and startle2.rco is loaded"
@@ -433,7 +433,7 @@ class PySounds:
             if a <= 0:
                 print("PySounds.playSound: Unable to clear RP2.1")
                 return
-            a = self.RP21.LoadCOFsf("C:\pyStartle\startle2.rco", self.samp_cof_flag)
+            a = self.RP21.LoadCOFsf("C:\\pyStartle\\startle2.rco", self.samp_cof_flag)
             if a > 0 and self.debugFlag:
                 print(
                     "PySounds.playSound: Connected to TDT RP2.1 and startle2.rco is loaded"
