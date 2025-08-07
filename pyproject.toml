@@ -8,7 +8,7 @@ dependencies = [
     # development utilities and general tools
     "black>=24.8",
     "Pint>=0.24",
-    "isort==5.0.2",
+    "isort>=5.0.2",
     "mypy>=1.13",
     "pytest==8.4.1",
     # Specific requirements
