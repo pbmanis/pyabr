@@ -37,7 +37,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-pylibrary = {pylibrary = git+https://github.com/pbmanis/pylibrary.git" }
+pylibrary = {git = "git+https://github.com/pbmanis/pylibrary.git" }
 # resampy = { git = "https://github.com/bmcfee/resampy.git", branch = "main" }
 
 
