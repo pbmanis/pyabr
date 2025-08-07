@@ -36,8 +36,8 @@ dependencies = [
     "pylibrary @ git+https://github.com/pbmanis/pylibrary.git#egg=pylibrary@main"
 ]
 
-[tool.uv.sources]
-pylibrary = {git = "git+https://github.com/pbmanis/pylibrary.git" }
+# [tool.uv.sources]
+# pylibrary = {git = "git+https://github.com/pbmanis/pylibrary.git" }
 # resampy = { git = "https://github.com/bmcfee/resampy.git", branch = "main" }
 
 
