@@ -17,7 +17,7 @@ from sklearn.metrics import confusion_matrix, classification_report
 
 rcParams["text.latex.preamble"] = r"\DeclareUnicodeCharacter{03BC}{\ensuremath{\mu}}"
 
-palette = sns.color_palette("tab10")
+palette = sns.color_palette("tab10")[:3]
 """ Takes output from the ABRA program (github.com/manorlab)
 """
 
@@ -42,6 +42,16 @@ def assign_treatment(df):
     df["treatment"] = df.apply(apply_treatment, axis=1)
     return df
 
+def assign_coding(df, coding: Union[list, None] = None):
+    """
+    Assign a coding column to the DataFrame based on the provided coding list.
+    If coding is None, no coding column is added.
+    """
+    if coding is not None:
+        df["coding"] = df["subject"].apply(lambda x: x in coding)
+    else:
+        df["coding"] = False
+    return df
 
 def assign_subject(df):
     df["subject"] = {}
@@ -51,7 +61,8 @@ def assign_subject(df):
             rf = row.Filename
         elif "File Name" in row.keys():
             rf = row["File Name"]
-        return rf
+        subject = rf.split("_")[2]
+        return subject
 
     df["subject"] = df.apply(apply_subject, axis=1)
     return df
@@ -105,6 +116,7 @@ def plot_thresholds(
     split_col="cross",
     cross_order=["C57Bl/6", "NF107"],
     plottype: str = "bar",
+    coding: Union[str, None] = None,
     **kwargs,
 ):
     assert plottype in ["bar", "box"]
@@ -145,6 +157,15 @@ def plot_thresholds(
         ax=ax,
         **kwds,
     )
+    if coding is not None:
+        df["marker"] = df.apply(
+            lambda row: '^' if row["subject"] in coding else 'o', axis=1
+        )
+    else:
+        df["marker"] = 'o'
+    df = df[df["treatment"] != "Unknown"]
+    hue_order = [x for x in hue_order if x in df["treatment"].unique()]
+    print("hue_order: ", hue_order)
     sns.swarmplot(
         x="treatment",
         y="Threshold",
@@ -161,6 +182,7 @@ def plot_thresholds(
         dodge=dodge,
         ax=ax,
     )
+    ax.set_ylim(0, 100)
     ax.legend(fontsize=7, loc="upper left", ncol=1, frameon=True)
     PH.nice_plot(ax, direction="outward")
     mpl.title("Thresholds by Treatment")
@@ -175,6 +197,7 @@ def plot_amplitude_data(
     treat_order=None,
     split: bool = False,
     plottype: str = "bar",
+    coding: Union[str, None] = None,
     split_col="cross",
     cross_order=["C57Bl/6", "NF107"],
 ):
@@ -212,13 +235,13 @@ def plot_amplitude_data(
     match plottype:
         case "bar":
             kwds = {"errorbar": ("sd", 1), "saturation": 0.45}
-            fn = sns.barplot
+            func = sns.barplot
         case "box":
             kwds = {"saturation": 0.6}
-            fn = sns.boxplot
+            func = sns.boxplot
         case _:
             raise ValueError(f"Unknown plot type: {plottype}")
-    fn(
+    func(
         x="treatment",
         y="maxWave1",
         data=dfp,
@@ -237,12 +260,13 @@ def plot_amplitude_data(
         order=treat_order,
         hue_order=hue_order,
         hue=hue,
-        alpha=0.6,
+        alpha=0.8,
         linewidth=0.25,
         edgecolor="black",
         dodge=dodge,
         ax=ax,
     )
+    ax.set_ylim(0, 8)
     ax.legend(fontsize=7, loc="upper right", ncol=1, frameon=True)
     PH.nice_plot(ax, direction="outward")
     mpl.title("Wave I Amplitude by Treatment")
@@ -399,6 +423,7 @@ def plot_IO_data(
     treat_order=None,
     individual=False,
     split: bool = False,
+    coding: Union[list, None] = None,
     **kwargs,
     # split_col:Union[str, None]="cross",
     # cross_order:Union[list, None]=None,
@@ -414,6 +439,7 @@ def plot_IO_data(
     if "Wave I amplitude (P1-T1) (μV)" not in df.columns:
         df.rename(columns={"Wave I amplitude (P1-T1) (μV)": "Wave1_amplitude"}, inplace=True)
     df = assign_subject(df)
+
     # print(df.head())
     dfp = pd.DataFrame(
         columns=[
@@ -430,6 +456,7 @@ def plot_IO_data(
     freqs = df["Frequency (Hz)"].unique()
     freq_order = [float(x) for x in sorted(freqs)]
     treats = df["treatment"].unique()
+
     if len(freqs) == 1 and freqs == 100.0:
         mode = "click"
         colors = sns.color_palette(palette, len(treats))
@@ -485,7 +512,9 @@ def plot_IO_data(
             ignore_index=True,
         )
 
-    tmap = [0, 1, 2, 3]
+    tmap = [2, 1, 0]
+    print(colors)
+    # exit()
     npl = 0
     for i, treat in enumerate(treats):
         data = df[df["treatment"] == treat]
@@ -496,6 +525,10 @@ def plot_IO_data(
                 marker = "s"
             else:
                 marker = "o"
+            if coding is not None:
+                if s in coding:
+                     marker = "^"
+
             if mode == "click":
                 color = colors[tmap[i]]
                 frqs = [100.0]
@@ -541,7 +574,7 @@ def plot_IO_data(
                         color=color,
                         label=labl,
                         linewidth=lw,
-                        markersize=2,
+                        markersize=0,
                         alpha=alpha,
                     )
             if mode == "tone" or (mode == "click" and individual):
@@ -583,15 +616,24 @@ def plot_IO_data(
     PH.nice_plot(ax, direction="outward")
 
 
-def plot_tone_thresholds(filename: Union[Path, str], ax=None, palette=None, treat_order=None):
+def plot_tone_thresholds(filename: Union[Path, str], ax=None, palette=None, treat_order=None, coding: Union[str, None] = None, 
+                         subjects: Union[list, None] = None):
     # Define the path to the CSV file
     fn = filename
     df = pd.read_csv(fn)
+
     df = assign_treatment(df)
     if ax is None:
         f, ax = mpl.subplots(1, 1, figsize=(6, 6))
 
-    print(df.columns)
+    # print(df.columns)
+    # print(df.Filename.unique())
+    df = df[df["Frequency"] != 24000]
+    df = assign_subject(df)
+    df = assign_coding(df, coding)
+    if subjects is not None:  # limit subjects to those in a list
+        df = df[df['subject'].isin(subjects)]
+        
     # df['Frequency'] = np.log10(df['Frequency'])
     # sns.swarmplot(x="Frequency", y="Threshold", data=df,    hue="treatment",
     #     hue_order=treat_order,
@@ -642,8 +684,13 @@ def plot_tone_thresholds(filename: Union[Path, str], ax=None, palette=None, trea
             #     dodge=True,
             # )
     ax.set_xscale("log")
-
-    mpl.title("Thresholds by Frequency")
+    ax.set_ylim(0, 90)
+    if subjects is not None:
+        subjlist = ", ".join(subjects)
+        mpl.title(f"Tone Thresholds for Subjects: {subjlist}")
+    else:
+        mpl.title("Tone Thresholds, all Subjects")
+    # mpl.title("Thresholds by Frequency")
     mpl.xlabel("Frequency")
     mpl.ylabel("Threshold (dB SPL)")
     mpl.xticks(rotation=45)
@@ -656,6 +703,14 @@ if __name__ == "__main__":
     # It can plot click and tone data, and can split the data by treatment and cross.
     # The data is expected to be in a specific format, with columns for treatment, subject, cross, etc.
     # The script uses seaborn and matplotlib for plotting.
+    coding_file = Path("/Volumes/Pegasus_004/ManisLab_Data3/Edwards_Reginald/RE_datasets/GlyT2_EGFP_NIHL/GlyT2_NIHL_Coding.xlsx")
+    print("Reading coding file: ", coding_file,
+          coding_file.is_file())
+    if coding_file.is_file():
+        coding_df = pd.read_excel(coding_file, sheet_name="coding")
+        ephys_subjects = coding_df["Subject"].unique()
+    else:
+        ephys_subjects = None
 
     mpl.rcParams["font.family"] = "serif"
     mpl.rcParams["font.size"] = 10
@@ -665,15 +720,18 @@ if __name__ == "__main__":
     treat_order = ["Sham", "NE2wks106", "NE2wks115"]
     strain = "GlyT2"
     # strain = "VGATEYFP"
-
+    subjects = None # all subjects
+    ephys_subjects = None  # or a list of subjects, e.g. ["WN8"]
+    # or:
+    # subjects = ["WN8"]
     if stim_type == "Click":
         f, ax = mpl.subplots(1, 3, figsize=(9, 4))
         f.suptitle(f"{strain} ABR Click Data", fontsize=16)
         split_col = None
         cross = None
         if strain == "GlyT2":
-            click_IO_file = Path("abra", "2025-07-21T19-53_export_click_IO.csv")
-            click_threshold_file = Path("abra", "2025-07-21T19-54_export_click_thresholds.csv")
+            click_IO_file = Path("abra", "GlyT2EGFP_2025-08-07T15-39_export_click_IO.csv")
+            click_threshold_file = Path("abra", "GlyT2EGFP_2025-08-07T15-39_export_click_thresholds.csv")
             cross = ["C57Bl/6", "NF107"]
             split_col = "cross"
         elif strain == "VGATEYFP":
@@ -691,7 +749,7 @@ if __name__ == "__main__":
                 "split_col": split_col,
                 "cross_order": cross,
             }
-            plot_IO_data(filename=click_IO_file, palette=palette, treat_order=treat_order, **kwds)
+            plot_IO_data(filename=click_IO_file, palette=palette, treat_order=treat_order, coding=ephys_subjects, **kwds)
         else:
             kwds = {
                 "individual": False,
@@ -711,15 +769,16 @@ if __name__ == "__main__":
         kwds3 = kwds2.copy()
         kwds3["ax"] = ax[2]
         kwds3.pop("individual", None)
-        plot_IO_data(filename=click_IO_file, palette=palette, treat_order=treat_order, **kwds2)
+        plot_IO_data(filename=click_IO_file, palette=palette, treat_order=treat_order, coding=ephys_subjects, **kwds2)
 
         plot_amplitude_data(
-            filename=click_IO_file, ax=ax[1], palette=palette, treat_order=treat_order, plottype="bar"
+            filename=click_IO_file, ax=ax[1], palette=palette, treat_order=treat_order, coding=ephys_subjects, plottype="bar"
         )
         plot_thresholds(
             filename=Path(click_threshold_file),
             palette=palette,
             treat_order=treat_order,
+            coding=ephys_subjects,
             **kwds3,
         )
         # mpl.tight_layout()
@@ -733,10 +792,13 @@ if __name__ == "__main__":
         print("Current working directory:", os.getcwd())
         cwd = Path.cwd()
         print("abra path: ", Path(cwd, "abra", "Tones").is_dir())
-        tonefile = Path("abra", "Tones", "2025-07-19T16-26_export_tones.csv")
-        toneamplitudefile = Path("abra", "Tones", "2025-07-20T11-08_export_tone_amplitudes.csv")
-        print(tonefile.is_file(), toneamplitudefile.is_file())
-        plot_tone_thresholds(filename=tonefile, palette=palette, treat_order=treat_order)
+        tonefile = Path("abra",  "GlyT2EGFP_2025-08-07T16-00_export_tone_thresholds.csv")
+        toneamplitudefile = Path("abra",  "GlyT2EGFP_2025-08-07T16-09_export_tone_IO.csv")
+        # print(tonefile.is_file(), toneamplitudefile.is_file())
+        subjects = None # all subjects
+        # or:
+        # subjects = ["WN8"]
+        plot_tone_thresholds(filename=tonefile, palette=palette, treat_order=treat_order, subjects=subjects)
         frpalette = sns.color_palette("nipy_spectral_r", 7)
         plot_IO_data(
             filename=toneamplitudefile,
