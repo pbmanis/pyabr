@@ -286,7 +286,7 @@ def get_analyzed_click_data(
 
 
 def get_analyzed_tone_data(
-    filename, AR, ABR4, subj, HPF: float = 100.0, maxdur: float = 10.0, scale: float = 1.0
+    filename, AR, ABR4, subj, HPF: float = 100.0, maxdur: float = 10.0, scale: float = 1.0, invert: bool = False
 ):
     pfiles = list(Path(filename).glob("*_interleaved_plateau_*.p"))
     # print("pfiles: ", len(pfiles))
@@ -312,7 +312,9 @@ def get_analyzed_tone_data(
         )
         # print("Read waves, shape= ", waves.shape)
         # print("metadata: ", metadata)
-    
+    if invert:
+        waves = -waves
+        print("INVERTED!!!")
     # if passing to ABRA, here we should combine the waveforms into the CSV file format that they want..
     # print("subject : ", subj)
     export_for_abra_tones(subj, waves, metadata)
@@ -565,7 +567,7 @@ def set_gain_and_scale(subj, AR):
             else:
                 print("Using defaults for subject: ", sname)
                 scale = 1
-                invert = False
+                invert = scd["default"]["invert"]
                 min_lat = 0.0
                 fit_index = 0
         else:
@@ -623,9 +625,10 @@ def check_file(
         requested_stimulus_type,
     )
     if subj["filename"].name.lower() != requested_stimulus_type.lower():
-        print("failed to find matching file... ")
+        print("failed to find matching file... ", subj["filename"].name, " requested: ", requested_stimulus_type)
         return donefiles, stim_type, False
-
+    # print(f"requested stimulus type: <{requested_stimulus_type}>, filename.name:  <{subj["filename"].name}>")
+    # print("subj in tones?: ", subj["filename"].name in ["Tones", "Tone"])
     match requested_stimulus_type:
         case "Click":
             if (
@@ -634,17 +637,18 @@ def check_file(
                 or fname.endswith("-p.txt")
             ):
                 stim_type = "Click"
-        case "Tone":
-            if (subj["filename"].name == "Tone") or (
-                subj["filename"].name == "Interleaved_plateau"
-            ):
-                stim_type = "Tone"
+        case "Tone" | "Tones":
+            if (subj["filename"].name in ["Tones", "Tone"]):
+            #     or (
+            #     subj["filename"].name == "Interleaved_plateau"
+            # ):
+                stim_type = "Tones"
         case "Interleaved_plateau" | 'interleaved_plateau':
             if subj["filename"].name.lower() == "Interleaved_plateau".lower():
                 stim_type = "Interleaved_plateau"
 
         case _:
-            print("Requested stimulus type not recognized", requested_stimulus_type)
+            print("Requested stimulus type not recognized", requested_stimulus_type, "sub filename: ", subj["filename"].name)
             raise ValueError
     CP.cprint("g", f"    ***** checkfile: stim_type: {stim_type!s}, {fname:s}")
     if stim_type is None:
@@ -671,7 +675,7 @@ def export_for_abra_clicks(subj: dict, dbs: list, waveana: object):
             "Samp. Per.": float((1.0 / new_freq) * 1e6),
             "No. Samps.": nsamps,
         }
-        print("interpol: ", wave_interpolated.shape)
+        # print("interpol: ", wave_interpolated.shape)
         for n in range(nsamps):
             row.update({f"{n:d}": wave_interpolated[n] * 1e6})
             # ax.plot(wave_interpolated)
@@ -687,6 +691,7 @@ def export_for_abra_clicks(subj: dict, dbs: list, waveana: object):
 
 def export_for_abra_tones(subj: dict, waves: np.ndarray, metadata: dict):
 
+    print("Exporting for ABRA tones: ", subj['subject'])
     nsamps = 244
     new_freq = 24414.0625
     newx = np.linspace(0, 10.0, num=nsamps)
@@ -725,7 +730,7 @@ def export_for_abra_tones(subj: dict, waves: np.ndarray, metadata: dict):
     if not abrap.exists():
         abrap.mkdir()
     df.to_csv(f"abra/Tones/{subj['name']:s}_tone_data.csv", index=False)
-    print("wrote to: ", f"abra/{subj['name']:s}_tone_data.csv")
+    print("Wrote to: ", f"abra/{subj['name']:s}_tone_data.csv")
     # exit()
 
 
@@ -739,7 +744,7 @@ def export_for_abra(
     donefiles = []
     waveana = None  # in case the analysis fails or the dataset was excluded
     # print("requested file type: ", requested_stimulus_type)
-    if requested_stimulus_type in ["Click", "Tone", "Interleaved_plateau"]:
+    if requested_stimulus_type in ["Click", "Tones", "Tone", "Interleaved_plateau"]:
         fns = list(subj["filename"].glob("*"))
     else:
         raise ValueError("Requested stimulus type not recognized")
@@ -793,7 +798,7 @@ def export_for_abra(
             # print(1./waveana.sample_freq)
 
             export_for_abra_clicks(subj=subj, dbs=dbs, waveana=waveana)
-        elif requested_stimulus_type in ["Tone", "Interleaved_plateau"]:
+        elif requested_stimulus_type in ["Tone", "Tones", "Interleaved_plateau"]:
             filename = Path(filename).parent
             scale, invert, min_lat, fit_index = set_gain_and_scale(subj, AR)
             CP.cprint("g", f"    ***** do one sub: filename: {filename!s}")
@@ -805,6 +810,7 @@ def export_for_abra(
                 AR.experiment["ABR_settings"]["HPF"],
                 AR.experiment["ABR_settings"]["maxdur"],
                 scale=scale,
+                invert=invert,
             )
             # CP.cprint("g", f"    ***** do one subj: dbs: {dbs!s}")
 
@@ -1409,7 +1415,7 @@ def do_tone_map_analysis(
     #     d_subjs = list(Path(directory_name).glob(f"{subject_prefix:s}*"))
     #     subjs.extend([ds for ds in d_subjs if ds.name.startswith(subject_prefix)])
     print("subject data keys: ", subject_data.keys())
-    if requested_stimulus_type == "Tone":  # include interleaved_plateau as well
+    if requested_stimulus_type == "Tones":  # include interleaved_plateau as well
         subjs = subject_data[requested_stimulus_type]
         subjs.extend(subject_data["Interleaved_plateau"])
     # print("subjs with stim type", subjs)
@@ -2066,12 +2072,12 @@ def find_files_for_subject(
     # if requested_stimulus_type not in dirs:
     #     raise ValueError(f"Requested stimulus type {requested_stimulus_type} not recognized")
     if subj_data is None:
-        subj_data = {"Click": [], "Tone": [], "Interleaved_plateau": []}
+        subj_data = {"Click": [], "Tones": [], "Interleaved_plateau": []}
     for filename in filenames:
         # print("filename: ", filename)
         if filename.name in [
             "Click",
-            "Tone",
+            "Tones",
             "interleaved_plateau",
             "Interleaved_plateau",
             "Interleaved_plateau_High",
@@ -2146,7 +2152,7 @@ def find_files_for_subject(
                     subj_data["Click"].append(dset)
 
         # Tones in a Tone subdirectory
-        if filename.name == "Tone" and filename.is_dir():
+        if filename.name == "Tones" and filename.is_dir():
             tone_files = filename.glob("*.txt")
             for tone_file in tone_files:
                 m_tone = REX.re_tone_file.match(tone_file.name)
@@ -2159,8 +2165,8 @@ def find_files_for_subject(
                     "filename": filename,
                     "datatype": "ABR4",
                 }
-                if dset not in subj_data["Tone"]:
-                    subj_data["Tone"].append(dset)
+                if dset not in subj_data["Tones"]:
+                    subj_data["Tones"].append(dset)
 
         # next check for pyabr3 files
         if filename.name.startswith(("Interleaved_plateau", "interleaved_plateau")) and filename.is_dir():
@@ -2199,7 +2205,7 @@ def get_datasets(directory_names, filter: str = "CBA"):
         ]
 
         for sub in subs:
-            print(sub.name)
+            print("subdir name: ", sub.name, filter)
             if not sub.name.startswith(filter):
                 continue
             subdata = find_files_for_subject(
@@ -2245,6 +2251,7 @@ if __name__ == "__main__":
     # exit()
     config_file_name = "/Users/pbmanis/Desktop/Python/RE_CBA/config/experiments.cfg"
     expt = "GlyT2_NIHL"  # or "CBA"
+
     if expt == "CBA":
         AR.get_experiment(config_file_name, "CBA_Age")
         directory_names = {  # values are symbol, symbol size, and relative gain factor
@@ -2307,40 +2314,44 @@ if __name__ == "__main__":
             "/Volumes/Pegasus_004/ManisLab_Data3/abr_data/Reggie_NIHL": ["o", 3.0, 1.0],
         }
 
-        subdata = get_datasets(directory_names, filter="VGATEYFP")
+        subdata = get_datasets(directory_names, filter="Glyt2EGFP")
         print("Subdata: ", subdata.keys())
+        # exit()
         # select subjects for tuning analysis parameters in the configuration file.
         tests = False
+        stim_type ="Tones"
+        # stim_type = "Interleaved_plateau"
+        # stim_type="Click"
         if tests:
-            stim_type = "Click"
-            test_subjs = ["UJ7"]  # , "XT9", "XT11", "N007"]
+            test_subjs = ["WJ8"]  # , "XT9", "XT11", "N007"]
             newsub = {stim_type: []}
             # print(subdata.keys())
             for sub in subdata:
                 # print(sub)
                 for d in subdata[sub]:
-                    # print(d)
+                    # print("*****", d)
                     if d["subject"] in test_subjs:
                         newsub[stim_type].append(d)
+                        print("Adding subject: ", d["subject"], " to new subdata")
 
             subdata = newsub
-
+        print("subdata stim type: ", subdata[stim_type])
         test_plots = False
-
+        # exit()
         # uncomment this to write the click csv files for the ABRA program.
-        # for subj in subdata['Click']:
-        #     print("Subject: ", subj
-        #     )
-        #     export_for_abra(AR=AR, ABR4=ABR4, subj = subj, requested_stimulus_type="Click")
-        stim ="Tone"
-        stim = "Interleaved_plateau"
-        stim="Click"
+        for subj in subdata[stim_type]:
+            print("Subject: ", subj
+            )
+            export_for_abra(AR=AR, ABR4=ABR4, subj = subj, requested_stimulus_type=stim_type)
+        exit()
+
+        # stim="Click"
         # print("\nSubdata IP: ", subdata[stim])
         # print("\nSubdata Click: ", subdata["Click"])
         # print("\nSubdata Tone: ", subdata["Tone"])
-        for n, subj in enumerate(subdata[stim]):
-            print("Subject: ", subj["subject"])
-            export_for_abra(AR=AR, ABR4=ABR4, subj=subj, requested_stimulus_type=stim)
+        # for n, subj in enumerate(subdata[stim]):
+        #     print("Subject: ", subj["subject"])
+        #     export_for_abra(AR=AR, ABR4=ABR4, subj=subj, requested_stimulus_type=stim)
         # do_click_io_analysis(
         #     AR=AR,
         #     ABR4=ABR4,
