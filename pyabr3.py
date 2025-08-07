@@ -54,7 +54,7 @@ class PyABR(object):
         Read the current protocol
         """
         assert self.ptreedata is not None  # do not call before building gui
-        self.pars = tomllib.load(self.current_protocol)
+        # self.pars = tomllib.load(self.current_protocol)
         with open(self.current_protocol, "r") as fh:
             self.rawtoml = fh.read()
         # paste the raw string into the text box for reference
@@ -70,8 +70,8 @@ class PyABR(object):
         """Build GUI and window"""
 
         app = pg.mkQApp()
-        win = pg.QtGui.QWidget()
-        layout = pg.QtGui.QGridLayout()
+        win = pg.QtWidgets.QWidget()
+        layout = pg.QtWidgets.QGridLayout()
         win.setLayout(layout)
         win.setWindowTitle("ABR Acquistion")
         win.resize(1380, 1024)
@@ -173,7 +173,7 @@ class PyABR(object):
         self.ptreedata.sigTreeStateChanged.connect(self.command_dispatcher)
 
         if (sys.flags.interactive != 1) or not hasattr(pg.QtCore, "PYQT_VERSION"):
-            pg.QtGui.QApplication.instance().exec_()
+            pg.QtGui.QGuiApplication.instance().exec()
 
     def command_dispatcher(self, param, changes):
 
