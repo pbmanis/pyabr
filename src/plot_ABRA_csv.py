@@ -106,6 +106,29 @@ def split_groups(
         dodge = False
     return hue, hue_order, dodge
 
+def select_subjects(df, subjects=None, coding=None):
+    if "File Name" in df.columns:
+        all_subject_files = list(df["File Name"].unique())
+    else: # abr analysis is not consistent in naming conventions
+        all_subject_files = list(df["Filename"].unique())
+    all_subjects = [f.split("_")[2] for f in all_subject_files]
+    # print("all_subjects: ", all_subjects)
+    # print("subjects: ", subjects)
+    coding = coding[coding['Subject'].notna()]
+    # print("coding: ", coding['Subject'].tolist())
+    if isinstance(subjects, str) and subjects == "ephys":
+        subjects = list(set(all_subjects).intersection(set(coding["Subject"])))
+        df = df[df['subject'].isin(subjects)]
+    elif isinstance(subjects, str) and subjects == "anatomy":
+        subjects = list(set(all_subjects).difference(set(coding["Subject"])))
+        df = df[~df['subject'].isin(subjects)]
+    elif isinstance(subjects, list) and len(subjects) > 0:
+        df = df[df['subject'].isin(subjects)]
+    else:
+        subjects = all_subjects
+    
+    print("selected subjects: ", subjects)
+    return df, subjects
 
 def plot_thresholds(
     filename: Union[str, Path],
@@ -439,7 +462,7 @@ def plot_IO_data(
     if "Wave I amplitude (P1-T1) (μV)" not in df.columns:
         df.rename(columns={"Wave I amplitude (P1-T1) (μV)": "Wave1_amplitude"}, inplace=True)
     df = assign_subject(df)
-
+    subjects = kwargs.pop("subjects", None)
     # print(df.head())
     dfp = pd.DataFrame(
         columns=[
@@ -452,7 +475,26 @@ def plot_IO_data(
             "dB SPL",
         ]
     )
-    subjects = list(df["File Name"].unique())
+    # all_subject_files = list(df["File Name"].unique())
+    # all_subjects = [f.split("_")[2] for f in all_subject_files]
+    # # print("all_subjects: ", all_subjects)
+    # # print("subjects: ", subjects)
+    # coding = coding[coding['Subject'].notna()]
+    # # print("coding: ", coding['Subject'].tolist())
+    # if isinstance(subjects, str) and subjects == "ephys":
+    #     subjects = list(set(all_subjects).intersection(set(coding["Subject"])))
+    #     df = df[df['subject'].isin(subjects)]
+    # elif isinstance(subjects, str) and subjects == "anatomy":
+    #     subjects = list(set(all_subjects).difference(set(coding["Subject"])))
+    #     df = df[~df['subject'].isin(subjects)]
+    # elif isinstance(subjects, list) and len(subjects) > 0:
+    #     df = df[df['subject'].isin(subjects)]
+    # else:
+    #     subjects = all_subjects
+    
+    # print("subjects: ", subjects)
+    df, subjects = select_subjects(df, subjects, coding=coding)
+
     freqs = df["Frequency (Hz)"].unique()
     freq_order = [float(x) for x in sorted(freqs)]
     treats = df["treatment"].unique()
@@ -631,9 +673,16 @@ def plot_tone_thresholds(filename: Union[Path, str], ax=None, palette=None, trea
     df = df[df["Frequency"] != 24000]
     df = assign_subject(df)
     df = assign_coding(df, coding)
-    if subjects is not None:  # limit subjects to those in a list
-        df = df[df['subject'].isin(subjects)]
-        
+    # if isinstance(subjects, str) and subjects in ["ephys", "anatomy"]:  # limit subjects to those in a list
+    #     if subjects == "ephys":
+    #         df = df[df['subject'].isin(coding['Subject'])]
+    #     elif subjects == "anatomy":
+    #         df = df[~df['subject'].isin(coding['Subject'])]
+    # elif isinstance(subjects, list) and len(subjects) > 0:
+    #     df = df[df['subject'].isin(subjects)]
+    # else:
+    #     pass # all subjects
+    df, subjects = select_subjects(df, subjects, coding=coding)
     # df['Frequency'] = np.log10(df['Frequency'])
     # sns.swarmplot(x="Frequency", y="Threshold", data=df,    hue="treatment",
     #     hue_order=treat_order,
@@ -685,9 +734,15 @@ def plot_tone_thresholds(filename: Union[Path, str], ax=None, palette=None, trea
             # )
     ax.set_xscale("log")
     ax.set_ylim(0, 90)
+    print("subjects: ", subjects)
+    # subjects = df["subject"].unique()
+    subjects  = [s for s in subjects if pd.notna(s) and s != "nan"]
     if subjects is not None:
-        subjlist = ", ".join(subjects)
-        mpl.title(f"Tone Thresholds for Subjects: {subjlist}")
+        if isinstance(subjects, list):
+            subjlist = ", ".join(subjects)
+        else:
+            subjlist = subjects
+        mpl.title(f"Tone Thresholds for Subjects: {subjlist}", fontsize=8)
     else:
         mpl.title("Tone Thresholds, all Subjects")
     # mpl.title("Thresholds by Frequency")
@@ -704,6 +759,9 @@ if __name__ == "__main__":
     # The data is expected to be in a specific format, with columns for treatment, subject, cross, etc.
     # The script uses seaborn and matplotlib for plotting.
     coding_file = Path("/Volumes/Pegasus_004/ManisLab_Data3/Edwards_Reginald/RE_datasets/GlyT2_EGFP_NIHL/GlyT2_NIHL_Coding.xlsx")
+    re_cba_path = Path("/Users/pbmanis/Desktop/Python/RE_CBA")
+    if not re_cba_path.is_dir():
+        raise ValueError(f"Path {re_cba_path} is not a directory")
     print("Reading coding file: ", coding_file,
           coding_file.is_file())
     if coding_file.is_file():
@@ -719,6 +777,7 @@ if __name__ == "__main__":
     stim_type = "Tone"
     treat_order = ["Sham", "NE2wks106", "NE2wks115"]
     strain = "GlyT2"
+    selection = "ephys" # "anatomy"  # or "ephys"  # or all. 
     # strain = "VGATEYFP"
     subjects = None # all subjects
     ephys_subjects = None  # or a list of subjects, e.g. ["WN8"]
@@ -730,13 +789,13 @@ if __name__ == "__main__":
         split_col = None
         cross = None
         if strain == "GlyT2":
-            click_IO_file = Path("abra", "GlyT2EGFP_2025-08-07T15-39_export_click_IO.csv")
-            click_threshold_file = Path("abra", "GlyT2EGFP_2025-08-07T15-39_export_click_thresholds.csv")
+            click_IO_file = Path(re_cba_path, "abra", "GlyT2EGFP_2025-08-07T15-39_export_click_IO.csv")
+            click_threshold_file = Path(re_cba_path, "abra", "GlyT2EGFP_2025-08-07T15-39_export_click_thresholds.csv")
             cross = ["C57Bl/6", "NF107"]
             split_col = "cross"
         elif strain == "VGATEYFP":
-            click_IO_file = Path("abra", "VGATEYFP_2025-07-23T17-50_export_click_IO.csv")
-            click_threshold_file = Path("abra", "VGATEYFP_2025-07-23T17-49_export_click_thresholds.csv")
+            click_IO_file = Path(re_cba_path, "abra", "VGATEYFP_2025-07-23T17-50_export_click_IO.csv")
+            click_threshold_file = Path(re_cba_path,"abra", "VGATEYFP_2025-07-23T17-49_export_click_thresholds.csv")
             cross = None
             split_col = None
         split = True
@@ -748,6 +807,7 @@ if __name__ == "__main__":
                 "split": True,
                 "split_col": split_col,
                 "cross_order": cross,
+                "selection": selection,
             }
             plot_IO_data(filename=click_IO_file, palette=palette, treat_order=treat_order, coding=ephys_subjects, **kwds)
         else:
@@ -757,6 +817,7 @@ if __name__ == "__main__":
                 "split": False,
                 "split_col": split_col,
                 "cross_order": cross,
+                "selection": selection,
             }
         kwds2 = {
             "individual": False,
@@ -764,6 +825,7 @@ if __name__ == "__main__":
             "split": False,
             "split_col": split_col,
             "cross_order": cross,
+            "selection": selection,
         }
         # now the 3 panel plot
         kwds3 = kwds2.copy()
@@ -791,22 +853,34 @@ if __name__ == "__main__":
         split = True  # split the data by cross
         print("Current working directory:", os.getcwd())
         cwd = Path.cwd()
-        print("abra path: ", Path(cwd, "abra", "Tones").is_dir())
-        tonefile = Path("abra",  "GlyT2EGFP_2025-08-07T16-00_export_tone_thresholds.csv")
-        toneamplitudefile = Path("abra",  "GlyT2EGFP_2025-08-07T16-09_export_tone_IO.csv")
+        print("abra path: ", Path(re_cba_path, "abra", "Tones").is_dir())
+        tonefile = Path(re_cba_path, "abra",  "GlyT2EGFP_2025-08-07T16-00_export_tone_thresholds.csv")
+        toneamplitudefile = Path(re_cba_path, "abra",  "GlyT2EGFP_2025-08-07T16-09_export_tone_IO.csv")
         # print(tonefile.is_file(), toneamplitudefile.is_file())
         subjects = None # all subjects
         # or:
+        if selection == "all":
+            subjects = None
+        elif selection == "anatomy":
+            subjects = None
+        elif selection == "ephys":
+            subjects = coding_df['Subject'] 
+        else:
+            raise ValueError("Subject choice is not recognized: ", selection)
         # subjects = ["WN8"]
-        plot_tone_thresholds(filename=tonefile, palette=palette, treat_order=treat_order, subjects=subjects)
+        print("selection: ", selection)
+        print("coding df subjects: ", coding_df['Subject'].tolist())
+        plot_tone_thresholds(filename=tonefile, palette=palette, treat_order=treat_order, coding=coding_df, subjects=selection)
         frpalette = sns.color_palette("nipy_spectral_r", 7)
         plot_IO_data(
             filename=toneamplitudefile,
             ax=None,
             palette=frpalette,
             treat_order=treat_order,
+            coding = coding_df,
             split=split,
             plottype="bar",
+            subjects=selection,
         )
         mpl.tight_layout()
         mpl.show()
