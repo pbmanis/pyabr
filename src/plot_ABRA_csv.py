@@ -110,7 +110,9 @@ def split_groups(
     return hue, hue_order, dodge
 
 
-def select_subjects(df: pd.DataFrame, coding: pd.DataFrame, selection:Union[str, list, None]=None):
+def select_subjects(
+    df: pd.DataFrame, coding: pd.DataFrame, selection: Union[str, list, None] = None
+):
     assert isinstance(coding, pd.DataFrame)
     if "File Name" in df.columns:
         all_subject_files = list(df["File Name"].unique())
@@ -122,20 +124,28 @@ def select_subjects(df: pd.DataFrame, coding: pd.DataFrame, selection:Union[str,
     # print("all subjects in dataframe: ", len(all_subjects), all_subjects)
     coding = coding[coding["Subject"].notna()]
     coded_subjects = coding["Subject"].tolist()
+    df["experiment"] = {}
     # print("all coded: ", len(coded_subjects), coded_subjects)
     match selection:
         case "ephys":
             subjects = list(set(all_subjects).intersection(set(coded_subjects)))
             df = df[df["subject"].isin(subjects)]
+            df["experiment"] = "ephys"
         case "anatomy":
             # subjects = list(set(all_subjects).difference(set(coded_subjects)))
             df = df[~df["subject"].isin(coded_subjects)]
             subjects = df["subject"].unique().tolist()
+            df["experiment"] = "anatomy"
         case x if isinstance(x, list):
             df = df[df["subject"].isin(selection)]
             subjects = selection
-        case None | "None" | "all" | "All": 
+        case None | "None" | "all" | "All":
             subjects = all_subjects
+            for subject in subjects:
+                if subject in coded_subjects:
+                    df.loc[df["subject"] == subject, "experiment"] = "ephys"
+                else:
+                    df.loc[df["subject"] == subject, "experiment"] = "anatomy"
         case _:
             raise ValueError(
                 "select_subjects: subjects must be 'ephys', 'anatomy', 'all' or a list of subject IDs, got: {subjects!r}"
@@ -182,7 +192,6 @@ def plot_thresholds(
     print("hue, hue_order, dodge: ", hue, hue_order, dodge)
     df, subjects = select_subjects(df, coding=coding, selection=selection)
 
-
     if ax is None:
         f, ax = mpl.subplots(1, 1)
     match plottype:
@@ -217,13 +226,19 @@ def plot_thresholds(
     print("df['treatment'].unique(): ", df["treatment"].unique())
     print("hue order: ", hue_order)
     if hue_order is None:
-        hue = 'treatment'
+        hue = "treatment"
         hue_order = df["treatment"].unique()
     else:
         hue_order = [x for x in hue_order if x in df["treatment"].unique()]
     if len(hue_order) == 0:
         hue_order = df["treatment"].unique()
     print("hue_order: ", hue_order)
+    print("selection: ", selection)
+    if selection == 'all':
+        markerdict = {"ephys": "o", "anatomy": "^"}
+    else:
+        markerdict = "o"
+    print("markerdict: ", markerdict)
     sns.swarmplot(
         x="treatment",
         y="Threshold",
@@ -232,8 +247,8 @@ def plot_thresholds(
         palette=palette,
         hue=hue,
         hue_order=hue_order,
-        # size=4,
-        # markers = 'x',
+        # markersize=4,
+        # marker=['o', '^'], # markerdict,
         alpha=1,
         linewidth=0.25,
         edgecolor="black",
@@ -243,9 +258,11 @@ def plot_thresholds(
     ax.set_ylim(0, 100)
     ax.legend(fontsize=7, loc="upper left", ncol=1, frameon=True)
     PH.nice_plot(ax, direction="outward")
-    mpl.title("Thresholds by Treatment")
-    mpl.xlabel("Treatment")
-    mpl.ylabel("Threshold (dB SPL)")
+    ax.set_xticklabels(["Sham", "106\ndB SPL", "115\ndB SPL"])
+    # mpl.title("Thresholds by Treatment")
+    # mpl.xlabel("Treatment")
+    ax.set_ylabel("Threshold (dB SPL)")
+    ax.set_xlabel("")
 
 
 def plot_amplitude_data(
@@ -287,8 +304,8 @@ def plot_amplitude_data(
     # print(sorted(df.subject.unique()))
     # exit()
     dfp = pd.DataFrame(columns=["subject", "cross", "treatment", "maxWave1"])
-   
-    for subject in subjects: # df["File Name"].unique():
+
+    for subject in subjects:  # df["File Name"].unique():
         subdf = df[df["subject"] == subject]
         max_wave1 = subdf["Wave I amplitude (P1-T1) (μV)"].max()
         try:
@@ -345,12 +362,15 @@ def plot_amplitude_data(
         dodge=dodge,
         ax=ax,
     )
-    ax.set_ylim(0, 8)
+    ax.set_ylim(0, 10)
+    
     ax.legend(fontsize=7, loc="upper right", ncol=1, frameon=True)
     PH.nice_plot(ax, direction="outward")
-    mpl.title("Wave I Amplitude by Treatment")
-    mpl.xlabel("Treatment")
-    mpl.ylabel("Wave I Amplitude (μV)")
+    # mpl.title("Wave I Amplitude by Treatment")
+    # mpl.xlabel("Treatment")
+    ax.set_xticklabels(["Sham", "106\ndB SPL", "115\ndBSPL"])
+    ax.set_ylabel("Maximum P1-T1 Amplitude (μV)")
+    ax.set_xlabel("")
     # mpl.xticks(rotation=45)
 
 
@@ -398,7 +418,7 @@ def plot_thr_amp_data(
         data=dfp,
         x="threshold",
         y="maxWave1",
-        style="cross",
+        style="",
         markers=["o", "s"],
         size="cross",
         sizes=[28, 32],
@@ -579,9 +599,9 @@ def plot_IO_data(
         for a in axn:
             PH.nice_plot(a)
         colors = sns.color_palette(palette, len(freq_order))
-    
+
     # build a smaller dataframe for each subject, to put into a
-    # reduced one for plotting. 
+    # reduced one for plotting.
     for subject in subjects:
         subdf = df[df["subject"] == subject]
         wave1 = np.array(subdf["Wave I amplitude (P1-T1) (μV)"].values)
@@ -620,6 +640,8 @@ def plot_IO_data(
                 marker = "o"
             if coding is not None:
                 if s in coding:
+                    marker = "o"
+                else:
                     marker = "^"
 
             if stim_type == "Click":
@@ -649,10 +671,14 @@ def plot_IO_data(
                     this_fr = subdata[subdata["Frequency (Hz)"] == freq]
                     db = np.array(this_fr["dB Level"])
                     amp = np.array(this_fr["Wave I amplitude (P1-T1) (μV)"])
-                    if stim_type == "Click":
+                    if stim_type == "Click" and individual:
                         labl = None
                         lw = 0.5
                         alpha = 1
+                    elif stim_type == "Click" and not individual:
+                        labl = None, # f"{treat} {s}"
+                        lw = 0.5
+                        alpha = 0.5
                     elif stim_type == "Tone":
                         labl = f"{freq/1000} kHz"
                         lw = 1.5
@@ -675,11 +701,17 @@ def plot_IO_data(
                 ax.set_title(f"{sshort}\n{treat}", fontsize=6)
 
             ax.legend(fontsize=5, loc="upper left", ncol=1, frameon=False)
+            if stim_type == "Click" and not individual:
+                sns.lineplot(data=data, x="dB Level", y="Wave I amplitude (P1-T1) (μV)", hue="treatment", 
+                             palette=palette, ax=ax, linewidth=1.5, markersize=0,
+                            err_style="band", errorbar=("sd", 1), err_kws={"alpha": 0.01}, hue_order=treat_order, legend=False,
+                            )
     if stim_type == "Click":
         hue = "treatment"
         hue_order = treat_order
         for a in axn:
-            a.set_ylim(-0.5, 8)
+            a.set_ylim(-0.5, 10.0)
+            a.set_xlim(20, 100)
 
     elif stim_type == "Tone":
         hue = "Frequency (Hz)"
@@ -704,8 +736,10 @@ def plot_IO_data(
     #     kwds = {"style": "cross", "style_order": ["C57Bl/6", "NF107"], "markers": ["o", "s"]}
     axn[-1].legend(fontsize=5, loc="upper left", ncol=1, frameon=True)
     axn[-1].set_xlabel("dB SPL")
-    label = r"Wave I Amplitude (μV)"
+
+    label = r"P1-T1 Amplitude (μV)"
     axn[-1].set_ylabel(label)
+    PH.nice_plot(axn[-1], direction="outward")
     # axn[-1].set_xticks(rotation=45)
     mpl.suptitle(f"ABR {stim_type} Data for {selection} Subjects", fontsize=8)
     # PH.nice_plot(ax, direction="outward")
@@ -724,7 +758,6 @@ def plot_tone_thresholds(
     df = pd.read_csv(fn)
     selection = kwargs.get("selection", None)
     print("selection: ", selection)
-
 
     df = assign_treatment(df)
     df = df[df["Frequency"] != 24000]
@@ -754,21 +787,65 @@ def plot_tone_thresholds(
         errorbar=("sd", 1),
         linewidth=1.5,
     )
+    fr_grid_ep: dict = {(float, float): int}  # keys are frequency and putative threshold
+    fr_grid_an: dict = {(float, float): int}
+    freqs = sorted(df["Frequency"].unique())
+    thrs = np.linspace(0, 100, 11)  # 10 db steps
+    for f in freqs:
+        for t in thrs:
+            fr_grid_ep[(f, t)] = 0.0
+            fr_grid_an[(f, t)] = 0.0
+
     for s in df["Filename"].unique():
         subdf = df[df["Filename"] == s]
+        print("subdf: ", subdf)
+        if subdf["experiment"].iloc[0] == "ephys":
+            mk = "^"
+            delx = -1
+            # fr_grid_ep
+        else:
+            mk = "o"
+            delx = 1
         if len(subdf) > 0:
-            ax.plot(
-                subdf["Frequency"]
-                - 0.2
-                + np.random.uniform(0, subdf["Frequency"] * 0.1, len(subdf["Frequency"])),
-                subdf["Threshold"],
-                marker="o",
-                color=palette[treat_order.index(subdf["treatment"].values[0])],
-                linewidth=0,
-                markersize=2,
-                alpha=0.6,
-            )
+            # this plots the points, but it is hard to distinguish them.
+            # ax.plot(
+            #     subdf["Frequency"]
+            #     + 0.2*delx
+            #     # + np.random.uniform(0, subdf["Frequency"] * 0.15, len(subdf["Frequency"])),
+            #     + subdf["Frequency"] * 0.15,
+            #     subdf["Threshold"],
+            #     marker=mk,
+            #     color=palette[treat_order.index(subdf["treatment"].values[0])],
+            #     linewidth=0,
+            #     markersize=3.5,
+            #     alpha=0.6,
+            # )
 
+            # check each threshold point:
+            for i, row in subdf.iterrows():
+                freq = row["Frequency"]
+                thr = row["Threshold"]
+                if np.isnan(thr):
+                    continue  # skip NaN thresholds
+                frdelta = np.logspace(np.log10(freq), np.log10(freq)*1.0002, endpoint=True, num=2, base=10)[1]
+                if row["experiment"] == "ephys":
+                    fr_grid_ep[(freq, thr)] += frdelta
+                    mk = "o"
+                    xoffset = fr_grid_an[(freq, thr)]
+                else:
+                    fr_grid_an[(freq, thr)] -= frdelta
+                    mk = "^"
+                    xoffset = fr_grid_an[(freq, thr)]
+                print(thr, freq, xoffset, fr_grid_ep[(freq, thr)], fr_grid_an[(freq, thr)])
+                ax.plot(
+                    freq + xoffset,
+                    thr,
+                    marker=mk,
+                    color=palette[treat_order.index(row["treatment"])],
+                    linewidth=0,
+                    markersize=4.5,
+                    alpha=0.6,
+                )
             # sns.stripplot(
             #     x="Frequency",
             #     y="Threshold",
@@ -785,8 +862,9 @@ def plot_tone_thresholds(
             #     jitter=20,
             #     dodge=True,
             # )
+
     ax.set_xscale("log")
-    ax.set_ylim(0, 90)
+    ax.set_ylim(0, 100)
     print("subjects: ", subjects)
     # subjects = df["subject"].unique()
     subjects = [s for s in subjects if pd.notna(s) and s != "nan"]
@@ -824,15 +902,15 @@ if __name__ == "__main__":
         ephys_subjects = None
 
     # stim_type = "Click"
-    stim_type = "Tone"
+    stim_type = "Click"
     treat_order = ["Sham", "NE2wks106", "NE2wks115"]
     strain = "GlyT2"
-    selection = (
-        "ephys"  # or "ephys"  # or "all" or list of subjects like ["WN8", "XR10"].
-    )
+    selection = "all"  # "ephys"  # or "ephys"  # or "all" or list of subjects like ["WN8", "XR10"].
     # strain = "VGATEYFP"
     split_col = None
     cross = None
+    split = False
+    show_individual = False
 
     match stim_type:
         case "Click":
@@ -857,8 +935,6 @@ if __name__ == "__main__":
                 )
                 cross = None
                 split_col = None
-            split = False
-            show_individual = True
             if show_individual:
                 kwds = {
                     "individual": True,
